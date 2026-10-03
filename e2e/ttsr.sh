@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/lib.sh"
 T=$(mktemp -d)
-P=(--plugin-dir "$PLUGINS/omc-jev" --plugin-dir "$PLUGINS/omc-ttsr")
+P=(--plugin-dir "$PLUGINS/omc-decision" --plugin-dir "$PLUGINS/omc-ttsr")
 mkdir -p "$T/proj/.claude/ttsr" "$T/proj/src"
 cat > "$T/proj/.claude/ttsr/no-any.md" <<'RULE'
 ---

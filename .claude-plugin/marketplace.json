@@ -6,9 +6,19 @@
   "description": "oh-my-pi harness features rebuilt as independent Claude Code mods.",
   "plugins": [
     {
-      "name": "omc-jev",
-      "source": "./plugins/omc-jev",
-      "description": "Typed harness decisions ($.jev): Jev when a key is set, a small Claude model otherwise. Picks effort per prompt and resumes turns that stop mid-promise."
+      "name": "omc-decision",
+      "source": "./plugins/omc-decision",
+      "description": "A decision model for other mods ($.decision.ask): typed questions about a state, answered by any System One endpoint (Jev by default) or a small Claude model."
+    },
+    {
+      "name": "omc-effort",
+      "source": "./plugins/omc-effort",
+      "description": "Auto effort: the decision model rates each prompt and the turn it starts runs at that effort."
+    },
+    {
+      "name": "omc-resume",
+      "source": "./plugins/omc-resume",
+      "description": "Unexpected stops: when a turn ends right after saying it will act, the decision model spots it and one turn resumes the work."
     },
     {
       "name": "omc-ttsr",

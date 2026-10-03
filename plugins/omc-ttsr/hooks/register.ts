@@ -5,7 +5,7 @@ import { matchToolRule, parseRule, type Rule } from "./rules";
 // - A rule with `condition:` is checked against what each tool call would write or run; a match
 //   denies the call and hands the model the rule's body as the reason (omp aborts the stream
 //   and retries; a denied call is the same lesson one step later).
-// - A rule with `question:` is a yes/no question the judge ($.jev from omc-jev) answers about each
+// - A rule with `question:` is a yes/no question the decision model ($.decision from omc-decision) answers about each
 //   finished main-thread turn; a yes leaves the rule for the model's next turn.
 
 const QUESTION_THRESHOLD = 0.5;
@@ -61,7 +61,8 @@ export const register: Register = (on, options) => {
     if (asked.length === 0) return done;
     try {
       const ids = asked.map((r, i) => `r${i}`);
-      const r = await $.jev.judge({
+      const r = await $.decision.ask({
+        purpose: "ttsr",
         state: { assistant_message: e.answer.slice(-4000) },
         questions: Object.fromEntries(asked.map((rule, i) => [ids[i]!, { type: "noul" as const, instructions: rule.question! }])),
       });

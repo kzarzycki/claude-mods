@@ -28,20 +28,20 @@ function ruleFolder(on: On, files: Record<string, string>) {
   on("session.start", ($, e) => ({ cwd: e.cwd }));
 }
 
-// A stand-in for omc-jev. The kit runs a test plugin's register on its own, without its closure,
+// A stand-in for omc-decision. The kit runs a test plugin's register on its own, without its closure,
 // so it answers from the state alone: yes when the message mentions passing tests.
-const fakeJev = {
-  name: "omc-jev",
+const fakeDecision = {
+  name: "omc-decision",
   register: (on: any) => {
-    on("engine.create", async ($: unknown, e: unknown, next: (e: unknown) => Promise<object>) => ({ ...(await next(e)), jev: { judge: async () => ({}) } }));
-    on("jev.judge", ($: unknown, e: { state: unknown; questions: Record<string, unknown> }) => {
+    on("engine.create", async ($: unknown, e: unknown, next: (e: unknown) => Promise<object>) => ({ ...(await next(e)), decision: { ask: async () => ({}) } }));
+    on("decision.ask", ($: unknown, e: { state: unknown; questions: Record<string, unknown> }) => {
       const noul = JSON.stringify(e.state).includes("tests pass") ? 0.9 : 0;
       return { value: { backend: "claude", model: "fake", answers: Object.fromEntries(Object.keys(e.questions).map(id => [id, { type: "noul", noul }])) } };
     });
   },
 };
 
-test("a matching tool call is denied with the rule as the reason", { plugins: [fakeJev] }, async ($, on) => {
+test("a matching tool call is denied with the rule as the reason", { plugins: [fakeDecision] }, async ($, on) => {
   ruleFolder(on, { "no-any.md": NO_ANY });
   on("ui.toast", () => ({ value: undefined }));
   let ran = 0;
@@ -57,7 +57,7 @@ test("a matching tool call is denied with the rule as the reason", { plugins: [f
 
 // The test kit does not route $.session.append to a test's on("session.append") (checked with a
 // one-hook repro), so this asserts the toast; e2e/ttsr.sh checks the appended rule in a real session.
-test("a question rule the judge says yes to fires after the turn", { plugins: [fakeJev] }, async ($, on) => {
+test("a question rule the judge says yes to fires after the turn", { plugins: [fakeDecision] }, async ($, on) => {
   ruleFolder(on, { "claims.md": CLAIMS });
   const toasts: string[] = [];
   on("ui.toast", ($, e) => (toasts.push(e.text), { value: undefined }));
