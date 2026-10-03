@@ -1,0 +1,10 @@
+{
+  "name": "compact-methods",
+  "version": "0.1.0",
+  "description": "oh-my-pi compaction methods: shake (move old tool output to files, no model call) and handoff (continue from a handoff document). Use `/compact shake` or `/compact handoff [focus]`.",
+  "userConfig": {
+    "autoMethod": { "type": "string", "title": "Auto-compaction method", "description": "What runs when the context fills; shake and handoff fall back to native when they can't help", "options": ["native", "shake", "handoff"], "default": "native" },
+    "protectTokens": { "type": "number", "title": "Shake: recent tokens kept", "description": "The newest part of the conversation shake never touches", "default": 16000, "min": 0 },
+    "minSavings": { "type": "number", "title": "Shake: minimum savings", "description": "Below this many tokens saved, auto shake hands over to native compaction", "default": 4000, "min": 0 }
+  }
+}

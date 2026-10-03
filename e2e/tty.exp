@@ -10,6 +10,8 @@ set timeout [expr {$wait * ([llength $cmds] + 2) + 30}]
 # The session is echoed to stdout; the caller keeps it.
 log_user 1
 match_max 1000000
+# Wide enough that table rows (/hub list) don't wrap.
+set stty_init "columns 200 rows 50"
 spawn -noecho claude {*}$args
 # Reading (not sleeping) is what writes the log.
 proc pause {secs} {

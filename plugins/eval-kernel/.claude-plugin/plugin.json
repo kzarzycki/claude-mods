@@ -1,0 +1,9 @@
+{
+  "name": "eval-kernel",
+  "version": "0.1.0",
+  "description": "A persistent JavaScript kernel the model drives with one `eval` tool: state survives between cells, and cells call Claude Code tools, models and subagents.",
+  "userConfig": {
+    "bun": { "type": "string", "title": "Bun executable", "description": "Command that runs the kernel", "default": "bun" },
+    "maxCalls": { "type": "number", "title": "Host calls per cell", "description": "A cell making more tool/model/agent calls than this is stopped", "default": 200, "min": 1 }
+  }
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/lib.sh"
 T=$(mktemp -d)
-P=(--plugin-dir "$PLUGINS/cm-decision" --plugin-dir "$PLUGINS/cm-ttsr")
+P=(--plugin-dir "$PLUGINS/decision-model" --plugin-dir "$PLUGINS/ttsr-rules")
 mkdir -p "$T/proj/.claude/ttsr" "$T/proj/src"
 cat > "$T/proj/.claude/ttsr/no-any.md" <<'RULE'
 ---

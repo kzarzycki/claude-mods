@@ -1,9 +1,0 @@
-{
-  "name": "cm-effort",
-  "version": "0.1.0",
-  "description": "Auto effort: the decision model rates each prompt and the turn it starts runs at that effort.",
-  "dependencies": ["cm-decision"],
-  "userConfig": {
-    "maxEffort": { "type": "string", "title": "Auto effort ceiling", "description": "Highest effort auto effort may pick", "options": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" }
-  }
-}

@@ -4,7 +4,7 @@ Copyright (c) 2026 Krzysztof Zarzycki
 
 Parts of this project are adapted from oh-my-pi (https://github.com/can1357/oh-my-pi),
 MIT License, Copyright (c) 2025 Mario Zechner, Copyright (c) 2025-2026 Can Bölük,
-Copyright (c) 2026 Stencil Labs, Inc.: the text judge (plugins/cm-decision/hooks/text-judge.ts),
+Copyright (c) 2026 Stencil Labs, Inc.: the text judge (plugins/decision-model/hooks/text-judge.ts),
 the effort and unexpected-stop questions, the handoff prompts and the TTSR rule format.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

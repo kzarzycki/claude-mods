@@ -1,0 +1,6 @@
+{
+  "name": "agent-hub",
+  "version": "0.1.0",
+  "description": "Agent hub: a pane listing this session's subagents with status, model, turns and tokens, and a box to steer a running one.",
+  "types": "./types/index.d.ts"
+}

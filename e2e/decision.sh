@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# cm-decision and the two mods that use it for harness decisions, cm-effort and cm-resume.
+# decision-model and the two mods that use it for harness decisions, auto-effort and resume-on-stop.
 source "$(dirname "$0")/lib.sh"
 T=$(mktemp -d)
-D=(--plugin-dir "$PLUGINS/cm-decision" --plugin-dir "$PLUGINS/cm-effort" --plugin-dir "$PLUGINS/cm-resume")
+D=(--plugin-dir "$PLUGINS/decision-model" --plugin-dir "$PLUGINS/auto-effort" --plugin-dir "$PLUGINS/resume-on-stop")
 
 claude_run "$T/ask.jsonl" "/decision ask Is this operation irreversible? -- DROP TABLE users; in production" "${D[@]}"
 expect "/decision ask answers a yes/no question" "$T/ask.jsonl" 'noul\\":(0\.[5-9]|1)'
