@@ -46,6 +46,7 @@ Each item was observed in a run, not read from docs.
 - **Compaction can't start from a command.** A `command.run` hook may not call `$.session.compact`; the engine refuses because the command holds the turn. Hence `/compact shake`, not `/shake`.
 - **Fork can fail after a resume.** `$.model.fork` has nothing to fork right after a session is resumed headless. Handoff falls back to `$.model.complete` over the messages `session.compact` passes in.
 - **A missing dependency blocks the load.** A mod whose `dependencies` aren't loaded doesn't load at all. A marketplace install pulls the dependency in (`+ 1 dependency`).
+- **Jev returns real distributions; the Claude backend can't.** Jev's `choice` answers carry probabilities (`xhigh 0.99, high 0.01`, confidence 0.98); the Claude text judge answers one-hot. Jev's `noul` can sit near the middle where a reader would say yes: "Is `DROP TABLE users;` in production irreversible?" came back 0.51, so thresholds need tuning per question.
 - **Child sessions don't save transcripts.** A session started from inside another Claude Code session inherits `CLAUDE_CODE_CHILD_SESSION` and stops saving transcripts; the e2e scripts unset it.
 - **Haiku subagents can miss the task.** A Haiku subagent sometimes answers its injected system context ("System initialization acknowledged…") instead of the task. The e2e checks use Sonnet for subagents.
 - **Test-kit gaps** (`claude plugin test`):
@@ -57,7 +58,7 @@ Each item was observed in a run, not read from docs.
 
 ## Not done or not verified
 
-- **A real System One endpoint.** Untested: no key was available, so every live run used the Claude backend (`claude/haiku`). The request shape matches omp's TypeSafe client, and unit tests check it against faked replies, for the OpenRouter preset and a custom URL.
+- **Other System One servers.** Jev through the OpenRouter preset is checked live (the `decision` and `ttsr` e2e suites pass against it, answering as `typesafe/jev-1.13-20260917`). The TypeSafe preset and custom URLs are checked only against faked replies.
 - **Steering a running subagent** (`/hub send`, the pane's input). No automated check: the kit can't intercept `$.session.append`, and an e2e needs a subagent that stays running long enough.
 - **TTSR rules scoped to edit/write miss Bash.** A model that's refused a `Write` can write the same file with `printf … > file` (seen in an e2e run). Scope a rule to `tool:bash` too if that matters; matching shell redirections to file globs isn't done.
 - **Eval cell timeouts.** A cell has no timeout. A synchronous infinite loop blocks the kernel until `/eval reset` (or `reset: true`). `judge()` in cells isn't wired: it would make `omc-eval` depend on `omc-decision`.
