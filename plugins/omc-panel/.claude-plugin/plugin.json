@@ -1,5 +1,0 @@
-{
-  "name": "omc-panel",
-  "version": "0.1.0",
-  "description": "/omc: every omc-* setting in one pane (or `/omc set <key> <value>`), on top of the /config rows each mod already has."
-}

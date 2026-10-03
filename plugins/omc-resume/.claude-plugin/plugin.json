@@ -1,9 +1,0 @@
-{
-  "name": "omc-resume",
-  "version": "0.1.0",
-  "description": "Unexpected stops: when a turn ends right after saying it will act, the decision model spots it and one turn resumes the work.",
-  "dependencies": ["omc-decision"],
-  "userConfig": {
-    "threshold": { "type": "number", "title": "Stop threshold", "description": "Probability of an unexpected stop at which a turn is resumed", "default": 0.5 }
-  }
-}

@@ -1,49 +1,49 @@
 {
-  "name": "oh-my-claude",
+  "name": "claude-mods",
   "owner": {
-    "name": "zarz"
+    "name": "kzarzycki"
   },
   "description": "oh-my-pi harness features rebuilt as independent Claude Code mods.",
   "plugins": [
     {
-      "name": "omc-decision",
-      "source": "./plugins/omc-decision",
+      "name": "cm-decision",
+      "source": "./plugins/cm-decision",
       "description": "A decision model for other mods ($.decision.ask): typed questions about a state, answered by any System One endpoint (Jev by default) or a small Claude model."
     },
     {
-      "name": "omc-effort",
-      "source": "./plugins/omc-effort",
+      "name": "cm-effort",
+      "source": "./plugins/cm-effort",
       "description": "Auto effort: the decision model rates each prompt and the turn it starts runs at that effort."
     },
     {
-      "name": "omc-resume",
-      "source": "./plugins/omc-resume",
+      "name": "cm-resume",
+      "source": "./plugins/cm-resume",
       "description": "Unexpected stops: when a turn ends right after saying it will act, the decision model spots it and one turn resumes the work."
     },
     {
-      "name": "omc-ttsr",
-      "source": "./plugins/omc-ttsr",
+      "name": "cm-ttsr",
+      "source": "./plugins/cm-ttsr",
       "description": "oh-my-pi TTSR rules: a regex rule denies the tool call that would break it, with the rule as the reason; a question rule is judged after each turn."
     },
     {
-      "name": "omc-compact",
-      "source": "./plugins/omc-compact",
+      "name": "cm-compact",
+      "source": "./plugins/cm-compact",
       "description": "oh-my-pi compaction methods: shake (move old tool output to files, no model call) and handoff (continue from a handoff document). Use `/compact shake` or `/compact handoff [focus]`."
     },
     {
-      "name": "omc-hub",
-      "source": "./plugins/omc-hub",
+      "name": "cm-hub",
+      "source": "./plugins/cm-hub",
       "description": "Agent hub: a pane listing this session's subagents with status, model, turns and tokens, and a box to steer a running one."
     },
     {
-      "name": "omc-eval",
-      "source": "./plugins/omc-eval",
+      "name": "cm-eval",
+      "source": "./plugins/cm-eval",
       "description": "A persistent JavaScript kernel the model drives with one `eval` tool: state survives between cells, and cells call Claude Code tools, models and subagents."
     },
     {
-      "name": "omc-panel",
-      "source": "./plugins/omc-panel",
-      "description": "/omc: every omc-* setting in one pane (or `/omc set <key> <value>`), on top of the /config rows each mod already has."
+      "name": "cm-panel",
+      "source": "./plugins/cm-panel",
+      "description": "/cm: every cm-* setting in one pane (or `/cm set <key> <value>`), on top of the /config rows each mod already has."
     }
   ]
 }

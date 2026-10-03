@@ -1,0 +1,1011 @@
+<!doctype html><html><head><meta charset=utf8><title>oh-my-pi on Claude Code</title><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>oh-my-pi on Claude Code</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (68ch) with figures breaking out to 1120px; features pinned to engine events like cables on a patch bay. */
+:root{
+  --bg:#F2F4F1; --surface:#FFFFFF; --ink:#1A1F1C; --muted:#5B6560; --line:#D3D9D4; --wash:#E8ECE8;
+  --accent:#3347C9;
+  --native:#1E8456; --heavy:#A86F12; --work:#B83A73; --blocked:#858C88;
+  --f-display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111513; --surface:#191E1B; --ink:#E5EAE6; --muted:#9AA49E; --line:#2D3430; --wash:#1F2522;
+  --accent:#8D9BFF; --native:#43C188; --heavy:#E2A640; --work:#E66CA3; --blocked:#727A75; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111513; --surface:#191E1B; --ink:#E5EAE6; --muted:#9AA49E; --line:#2D3430; --wash:#1F2522;
+  --accent:#8D9BFF; --native:#43C188; --heavy:#E2A640; --work:#E66CA3; --blocked:#727A75; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 var(--f-body);padding-inline:16px;padding-block:0 64px}
+.wrap{max-width:1120px;margin:0 auto}
+.col{max-width:68ch}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(2.2rem,5vw,3.6rem);font-weight:700;letter-spacing:-.02em}
+h2{font-size:clamp(1.5rem,3vw,2.1rem);font-weight:700;letter-spacing:-.01em}
+h3{font-size:1.2rem;font-weight:700}
+p{margin:0}
+code,.mono{font-family:var(--f-mono);font-size:.86em}
+code{background:var(--wash);padding:.08em .35em;border-radius:3px}
+a{color:var(--accent)}
+.eyebrow{font:500 .74rem/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+section{display:grid;gap:20px;padding-block:44px;border-top:1px solid var(--line)}
+section:first-of-type{border-top:0}
+
+/* hero */
+header{display:grid;gap:18px;padding-block:56px 36px}
+header .lede{font-size:1.18rem;max-width:62ch}
+header .src{font-size:.85rem;color:var(--muted);max-width:80ch}
+
+/* fit legend */
+.legend{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:.9rem}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.sw{width:14px;height:14px;border-radius:3px;border:2px solid currentColor;display:inline-block;flex:none}
+.sw.n{color:var(--native);background:color-mix(in srgb,var(--native) 18%,transparent)}
+.sw.h{color:var(--heavy);background:color-mix(in srgb,var(--heavy) 18%,transparent)}
+.sw.w{color:var(--work);background:color-mix(in srgb,var(--work) 18%,transparent)}
+.sw.b{color:var(--blocked);background:repeating-linear-gradient(45deg,transparent 0 3px,color-mix(in srgb,var(--blocked) 40%,transparent) 3px 5px)}
+.defs{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.defs div{display:grid;gap:4px;font-size:.92rem}
+.defs b{display:flex;align-items:center;gap:8px;font-family:var(--f-display);font-size:1.02rem}
+
+/* figures */
+figure{margin:0;display:grid;gap:10px}
+.fig{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px}
+.fig svg{display:block;width:100%;height:auto;min-width:720px}
+.fig.small svg{min-width:560px}
+figcaption{font-size:.88rem;color:var(--muted);max-width:90ch}
+
+/* SVG classes (themed through tokens) */
+svg text{font-family:var(--f-body);fill:var(--ink);font-size:12px}
+svg .t-mono{font-family:var(--f-mono);font-size:12px}
+svg .t-sm{font-size:10.5px;fill:var(--muted)}
+svg .t-lab{font-size:11px;fill:var(--muted)}
+svg .t-h{font-family:var(--f-display);font-size:14px;font-weight:700}
+svg .box{fill:var(--surface);stroke:var(--ink);stroke-width:1.2}
+svg .box-acc{fill:color-mix(in srgb,var(--accent) 10%,var(--surface));stroke:var(--accent);stroke-width:2}
+svg .box-dim{fill:var(--wash);stroke:var(--blocked);stroke-width:1.2;stroke-dasharray:4 3}
+svg .rail{fill:var(--wash);stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+svg .ln{stroke:var(--muted);stroke-width:1.4;fill:none}
+svg .ln-ink{stroke:var(--ink);stroke-width:1.4;fill:none}
+svg .ln-acc{stroke:var(--accent);stroke-width:1.8;fill:none}
+svg .ln-dash{stroke:var(--muted);stroke-width:1.3;fill:none;stroke-dasharray:5 4}
+svg .ln-work{stroke:var(--work);stroke-width:2;fill:none}
+svg .ln-native{stroke:var(--native);stroke-width:2;fill:none}
+svg .ah{fill:var(--muted)} svg .ah-ink{fill:var(--ink)} svg .ah-acc{fill:var(--accent)} svg .ah-work{fill:var(--work)} svg .ah-native{fill:var(--native)}
+svg .c-n{fill:color-mix(in srgb,var(--native) 16%,var(--surface));stroke:var(--native);stroke-width:1.3}
+svg .c-h{fill:color-mix(in srgb,var(--heavy) 16%,var(--surface));stroke:var(--heavy);stroke-width:1.3}
+svg .c-w{fill:color-mix(in srgb,var(--work) 16%,var(--surface));stroke:var(--work);stroke-width:1.3}
+svg .c-b{fill:url(#hatchB);stroke:var(--blocked);stroke-width:1.3}
+svg .hatch-line{stroke:var(--blocked);stroke-width:1.2;opacity:.55}
+svg .hatch-work{stroke:var(--work);stroke-width:1.2;opacity:.6}
+svg .x{stroke:var(--work);stroke-width:2.2}
+svg .lane{fill:var(--wash);stroke:none}
+svg .tok{fill:var(--ink);opacity:.75}
+svg .match{stroke:var(--work);stroke-width:2.4}
+
+/* fit matrix */
+.matrix-wrap{overflow-x:auto}
+.matrix{display:grid;grid-template-columns:72px repeat(4,minmax(170px,1fr));gap:6px;min-width:780px}
+.matrix .hd{font:600 .82rem/1.2 var(--f-body);padding:8px 6px;display:flex;align-items:center;gap:8px}
+.matrix .rh{font:500 .78rem/1.2 var(--f-mono);color:var(--muted);display:flex;align-items:center}
+.matrix .cell{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start;min-height:56px}
+.pill{font-size:.8rem;padding:3px 8px;border-radius:999px;border:1.5px solid currentColor;line-height:1.3}
+.pill.n{color:var(--native);background:color-mix(in srgb,var(--native) 12%,transparent)}
+.pill.h{color:var(--heavy);background:color-mix(in srgb,var(--heavy) 12%,transparent)}
+.pill.w{color:var(--work);background:color-mix(in srgb,var(--work) 12%,transparent)}
+.pill.b{color:var(--blocked);background:color-mix(in srgb,var(--blocked) 12%,transparent)}
+.pill span{color:var(--ink)}
+
+/* feature cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 16px 12px;display:grid;gap:10px;align-content:start;min-width:0;position:relative}
+.card::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 2px 2px 0;background:var(--fit)}
+.card[data-fit="n"]{--fit:var(--native)} .card[data-fit="h"]{--fit:var(--heavy)} .card[data-fit="w"]{--fit:var(--work)} .card[data-fit="b"]{--fit:var(--blocked)}
+.card .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.badge{font:600 .72rem/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--fit);white-space:nowrap}
+.card dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:.9rem}
+.card dt{font:500 .72rem/1.9 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.card dd{margin:0;min-width:0}
+.feel{font-size:.9rem;border-top:1px dashed var(--line);padding-top:8px}
+.feel b{font-weight:600}
+.decide{display:flex;flex-wrap:wrap;align-items:center;gap:6px;border-top:1px solid var(--line);padding-top:10px;font-size:.82rem}
+.decide .lbl{color:var(--muted);margin-right:4px}
+.decide button,.cmt{font:500 .8rem/1 var(--f-body);padding:6px 10px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+.decide button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.decide button:disabled{cursor:not-allowed;opacity:.55}
+.decide .who{color:var(--muted);font-size:.78rem}
+.cmt{margin-left:auto}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* tables */
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:.92rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 .72rem/1.4 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.glossary{background:var(--surface);border:1px solid var(--line);border-radius:8px;min-width:720px}
+.glossary td:first-child{font-weight:600;width:22%}
+.glossary td:nth-child(2){max-width:62ch}
+.glossary td:nth-child(3),.glossary td:nth-child(4){white-space:nowrap}
+.glossary td:nth-child(4){font-family:var(--f-mono)}
+.glossary a{color:var(--ink);text-decoration-color:var(--line);text-underline-offset:3px}
+
+ul.plain{margin:0;padding-left:1.1em;display:grid;gap:6px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:24px}
+.two>*{min-width:0}
+.callout{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:6px;padding:14px 16px;display:grid;gap:8px}
+.waves{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px}
+.wave{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;gap:8px;align-content:start}
+.wave h3{font-size:1.05rem}
+.tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
+.tally .wave ul{margin:0;padding-left:1.1em;font-size:.9rem}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}.card:hover{border-color:var(--muted)}}
+.decide{display:none}
+</style>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">Proposal · harness engineering</span>
+  <h1>oh-my-pi on Claude Code</h1>
+  <p class="lede">What it takes to rebuild oh-my-pi's best features as Claude Code mods (TypeScript plugins that hook the engine from inside), and how natural each one feels. Fourteen of the twenty features land on hooks built for that job. Four need a workaround, one is a large build, and two are blocked today. A comparison of the two tools' subagents is near the end.</p>
+  <p class="src"><b>Status:</b> this is the research written before the spike. What was built from it, and what the spike found, is in the <a href="https://github.com/kzarzycki/claude-mods#readme">claude-mods README</a>; the mods are named <code>cm-*</code> there, not omc.</p>
+  <p class="src">Based on the mod API types shipped with Claude Code 2.1.287 (the CLI installed here reports 2.1.288, so small drift is possible) and the oh-my-pi repository at 18.5.0 (your installed omp is 18.3.0). Every API name below is taken from those types. Claims that need a test are listed under <a href="#spikes">Open questions</a>.</p>
+  <div class="two">
+    <div class="callout"><b>oh-my-pi (omp)</b><span>An open-source coding agent for the terminal, built on the <code>pi</code> agent. Its strength is the harness (everything around the model: which model runs when, what goes into context, which rules and reviewers watch the output). It runs models from many vendors.</span></div>
+    <div class="callout"><b>Claude Code mods</b><span>TypeScript plugins that run inside Claude Code and hook its engine: each model request, each tool call, the system prompt, compaction, the UI. A mod can watch an event, rewrite it, or answer it in the engine's place. This page asks how much of omp fits into mods.</span></div>
+  </div>
+  <div class="defs" aria-label="Fit scale">
+    <div><b><i class="sw n"></i>Native</b><span class="muted">The API has a hook built for this. Small code, no tricks.</span></div>
+    <div><b><i class="sw h"></i>Supported, heavy</b><span class="muted">The hook is documented, but you rebuild a whole subsystem on top of it.</span></div>
+    <div><b><i class="sw w"></i>Workaround</b><span class="muted">It works, but bends an API around a limit. Likely to break on upgrades.</span></div>
+    <div><b><i class="sw b"></i>Blocked</b><span class="muted">The API can't do it today.</span></div>
+  </div>
+</header>
+
+<!-- ============ FEATURE TABLE ============ -->
+<section id="features">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">Scope</span>
+    <h2>The features, in plain words</h2>
+    <p>What each feature does in omp, as this proposal understands it. If a description is off, the verdict is too, so this table is the first thing to agree on. Names link to the section that covers each one.</p>
+  </div>
+  <div class="tbl">
+    <table class="glossary">
+      <thead><tr><th>Feature</th><th>What it does</th><th>Fit</th><th>Size</th></tr></thead>
+      <tbody>
+        <tr><td><a href="#models">Other vendors · gateway (B)</a></td><td>Run Claude Code's main loop and subagents on non-Claude models (OpenAI, Google, OpenRouter, local), by pointing Claude Code at a proxy that translates between APIs. omp can log in with existing subscriptions such as ChatGPT or Gemini plans.</td><td><span class="pill n"><span>Native</span></span></td><td>M</td></tr>
+        <tr><td><a href="#models">Other vendors · own client (A)</a></td><td>Same goal, without a proxy: the mod itself sends each model request to the other vendor and feeds the answer back to Claude Code.</td><td><span class="pill h"><span>Heavy</span></span></td><td>L</td></tr>
+        <tr><td><a href="#models">Model roles</a></td><td>Named slots, each holding a model: <code>default</code>, <code>smol</code> (fast and cheap), <code>slow</code> (strongest), <code>tiny</code>, <code>task</code>, <code>advisor</code>, <code>judge</code>, <code>commit</code>. Features ask for a role rather than a model, so swapping a model is one line of config.</td><td><span class="pill n"><span>Native</span></span></td><td>S</td></tr>
+        <tr><td><a href="#models">Fallback chains</a></td><td>When a model errors or hits a usage limit, retry with the next model in a list. omp can also switch accounts or wait for the limit to reset.</td><td><span class="pill n"><span>Native</span></span></td><td>S</td></tr>
+        <tr><td><a href="#eval">Eval kernel + PTC</a></td><td>A tool that runs JavaScript (or Python) in a long-lived process that keeps its variables between calls, like a notebook. Code in it can call the agent's other tools, models and subagents (PTC: programmatic tool calling), so the model writes one program instead of making twenty separate tool calls.</td><td><span class="pill w"><span>Workaround</span></span></td><td>L</td></tr>
+        <tr><td><a href="#decisions">Prewalk</a></td><td>Plan with the strong model, then switch automatically to the cheap model once the first file edits begin.</td><td><span class="pill n"><span>Native</span></span></td><td>S</td></tr>
+        <tr><td><a href="#decisions">JEV decisions</a></td><td>Small yes/no or multiple-choice calls inside the harness, made by Jev (a model built for judgments, not chat). Examples: how much thinking this prompt needs, and whether the agent stopped before doing what it promised.</td><td><span class="pill n"><span>Native</span></span></td><td>M</td></tr>
+        <tr><td><a href="#ttsr">TTSR tool rules</a></td><td>TTSR (time-traveling stream rules) are rules written as Markdown files. A tool rule is a regex or code pattern checked against what the agent is about to write to a file. A match blocks the write and tells the model the rule.</td><td><span class="pill n"><span>Native</span></span></td><td>S</td></tr>
+        <tr><td><a href="#ttsr">TTSR question rules</a></td><td>A rule phrased as a yes/no question ("did the answer skip the tests?"). The judge checks every answer against it.</td><td><span class="pill n"><span>Native</span></span></td><td>S</td></tr>
+        <tr><td><a href="#ttsr">TTSR stream rules</a></td><td>A rule checked against the model's text while it is still being written. A match stops the answer and makes the model redo it with the rule in front of it.</td><td><span class="pill w"><span>Workaround</span></span></td><td>M</td></tr>
+        <tr><td><a href="#context">Compaction: shake · handoff · soft · idle</a></td><td>Ways to shrink a conversation that has grown too long. <b>shake</b> replaces old tool output with file references and needs no model call. <b>handoff</b> has the model write a hand-over note that replaces the history. <b>soft</b> is a normal summary. <b>idle</b> compacts while you're away.</td><td><span class="pill n"><span>Native</span></span></td><td>M</td></tr>
+        <tr><td><a href="#context">Notes rollover</a></td><td>The model keeps a small notebook. When the context fills, it starts a fresh window that carries only the notebook and its most recent work, with no summary.</td><td><span class="pill w"><span>Workaround</span></span></td><td>M</td></tr>
+        <tr><td><a href="#context">snapcompact</a></td><td>Old history is printed onto images, and a vision model reads them back instead of the original text.</td><td><span class="pill b"><span>Blocked</span></span></td><td>M</td></tr>
+        <tr><td><a href="#context">Mid-turn compaction</a></td><td>Compact while a long chain of tool calls is still running, not only between turns.</td><td><span class="pill b"><span>Blocked</span></span></td><td>S</td></tr>
+        <tr><td><a href="#advisors">Always-on advisors</a></td><td>A second model reviews the agent's work in the background as it happens. It interrupts only for a real problem (a blocker); smaller notes wait. omp can make the agent pause until the review catches up.</td><td><span class="pill n"><span>Native</span></span></td><td>M</td></tr>
+        <tr><td><a href="#advisors">Hashline edit</a></td><td>An edit tool where every edit cites a short tag taken when the file was last read. If the file changed since then, the edit is rejected instead of silently landing in the wrong place.</td><td><span class="pill n"><span>Native</span></span></td><td>M</td></tr>
+        <tr><td><a href="#control">Commands and settings</a></td><td>Slash commands and settings that switch each feature on or off and configure it, plus one control pane that shows the state of all of them.</td><td><span class="pill n"><span>Native</span></span></td><td>S</td></tr>
+        <tr><td><a href="#subagents">Structured subagent results</a></td><td>The parent gives a child a JSON schema; the child must return data that matches it, and is told to fix it until it does.</td><td><span class="pill n"><span>Native</span></span></td><td>M</td></tr>
+        <tr><td><a href="#subagents">Agent hub pane</a></td><td>A live list of running and finished child agents with their model, cost and current activity. From it you can steer any child.</td><td><span class="pill n"><span>Native</span></span></td><td>M</td></tr>
+        <tr><td><a href="#subagents">Copy-on-write workspaces</a></td><td>Each child works in an instant copy of the repo (a file-system clone, not a full copy), and its changes are merged back automatically.</td><td><span class="pill w"><span>Workaround</span></span></td><td>M</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ SEAM MAP ============ -->
+<section id="map">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">The whole picture</span>
+    <h2>Where each feature plugs in</h2>
+    <p>A Claude Code turn passes through a fixed set of engine events. A mod hooks an event with <code>on(event, hook)</code> and can watch it, rewrite it, or answer it instead of the engine. Each omp feature hooks one or two of them. The bottom row shows the services a mod calls through <code>$</code>; there is no Node inside a mod, so everything outside it goes through these.</p>
+  </div>
+  <figure>
+    <div class="fig">
+<svg viewBox="0 100 1110 520" role="img" aria-label="Claude Code turn lifecycle: prompt.submit, prompt.compose, turn.step, tool.call, session.append, turn.complete and session.compact, with each oh-my-pi feature pinned to the event it hooks, colored by how natural the fit is.">
+  <defs>
+    <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+    <marker id="m1i" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-ink"/></marker>
+    <pattern id="hatchB" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" class="hatch-line"/></pattern>
+  </defs>
+
+  <!-- chips: prompt.submit (x30) -->
+  <line x1="105" y1="218" x2="105" y2="240" class="ln"/>
+  <rect x="30" y="196" width="150" height="22" rx="4" class="c-n"/><text x="38" y="211">JEV · pick effort</text>
+  <!-- prompt.compose (x210) -->
+  <line x1="285" y1="218" x2="285" y2="240" class="ln"/>
+  <rect x="210" y="196" width="150" height="22" rx="4" class="c-n"/><text x="218" y="211">Always-on rules</text>
+  <rect x="210" y="168" width="150" height="22" rx="4" class="c-n"/><text x="218" y="183">Prewalk nudge</text>
+  <!-- turn.step (x390) -->
+  <line x1="465" y1="218" x2="465" y2="240" class="ln"/>
+  <rect x="390" y="196" width="150" height="22" rx="4" class="c-n"/><text x="398" y="211">Roles · model per step</text>
+  <rect x="390" y="168" width="150" height="22" rx="4" class="c-n"/><text x="398" y="183">Advisor wait gate</text>
+  <rect x="390" y="140" width="150" height="22" rx="4" class="c-w"/><text x="398" y="155">TTSR stream rules</text>
+  <rect x="390" y="112" width="150" height="22" rx="4" class="c-h"/><text x="398" y="127">Other vendors · A</text>
+  <!-- tool.call (x570) -->
+  <line x1="645" y1="218" x2="645" y2="240" class="ln"/>
+  <rect x="570" y="196" width="150" height="22" rx="4" class="c-n"/><text x="578" y="211">TTSR tool rules</text>
+  <rect x="570" y="168" width="150" height="22" rx="4" class="c-n"/><text x="578" y="183">Hashline edit</text>
+  <rect x="570" y="140" width="150" height="22" rx="4" class="c-w"/><text x="578" y="155">Eval kernel + PTC</text>
+  <!-- session.append (x750) -->
+  <line x1="825" y1="218" x2="825" y2="240" class="ln"/>
+  <rect x="750" y="196" width="150" height="22" rx="4" class="c-n"/><text x="758" y="211">Advisor notes in</text>
+  <!-- turn.complete (x930) -->
+  <line x1="1005" y1="218" x2="1005" y2="240" class="ln"/>
+  <rect x="930" y="196" width="150" height="22" rx="4" class="c-n"/><text x="938" y="211">Advisor review</text>
+  <rect x="930" y="168" width="150" height="22" rx="4" class="c-n"/><text x="938" y="183">JEV stop check</text>
+  <rect x="930" y="140" width="150" height="22" rx="4" class="c-n"/><text x="938" y="155">TTSR question rules</text>
+
+  <!-- stages -->
+  <rect x="30"  y="240" width="150" height="60" rx="6" class="box"/>
+  <text x="105" y="266" text-anchor="middle" class="t-mono">prompt.submit</text><text x="105" y="285" text-anchor="middle" class="t-sm">prompt typed</text>
+  <rect x="210" y="240" width="150" height="60" rx="6" class="box"/>
+  <text x="285" y="266" text-anchor="middle" class="t-mono">prompt.compose</text><text x="285" y="285" text-anchor="middle" class="t-sm">system prompt built</text>
+  <rect x="390" y="240" width="150" height="60" rx="6" class="box-acc"/>
+  <text x="465" y="266" text-anchor="middle" class="t-mono">turn.step</text><text x="465" y="285" text-anchor="middle" class="t-sm">one model request, streamed</text>
+  <rect x="570" y="240" width="150" height="60" rx="6" class="box"/>
+  <text x="645" y="266" text-anchor="middle" class="t-mono">tool.call</text><text x="645" y="285" text-anchor="middle" class="t-sm">each tool use</text>
+  <rect x="750" y="240" width="150" height="60" rx="6" class="box"/>
+  <text x="825" y="266" text-anchor="middle" class="t-mono">session.append</text><text x="825" y="285" text-anchor="middle" class="t-sm">row stored</text>
+  <rect x="930" y="240" width="150" height="60" rx="6" class="box"/>
+  <text x="1005" y="266" text-anchor="middle" class="t-mono">turn.complete</text><text x="1005" y="285" text-anchor="middle" class="t-sm">turn ends</text>
+  <line x1="180" y1="270" x2="208" y2="270" class="ln-ink" marker-end="url(#m1i)"/>
+  <line x1="360" y1="270" x2="388" y2="270" class="ln-ink" marker-end="url(#m1i)"/>
+  <line x1="540" y1="270" x2="568" y2="270" class="ln-ink" marker-end="url(#m1i)"/>
+  <line x1="720" y1="270" x2="748" y2="270" class="ln-ink" marker-end="url(#m1i)"/>
+  <line x1="900" y1="270" x2="928" y2="270" class="ln-ink" marker-end="url(#m1i)"/>
+  <!-- agent loop -->
+  <path d="M610 300 V332 H440 V303" class="ln-ink" marker-end="url(#m1i)"/>
+  <text x="525" y="350" text-anchor="middle" class="t-lab">tool result → next step (the agent loop)</text>
+
+  <!-- compaction -->
+  <path d="M1005 300 V377" class="ln-ink" marker-end="url(#m1i)"/>
+  <text x="1012" y="344" class="t-lab">context full</text>
+  <rect x="930" y="380" width="150" height="60" rx="6" class="box"/>
+  <text x="1005" y="406" text-anchor="middle" class="t-mono">session.compact</text><text x="1005" y="425" text-anchor="middle" class="t-sm">history rebuilt</text>
+  <line x1="900" y1="410" x2="930" y2="410" class="ln"/>
+  <rect x="750" y="372" width="150" height="22" rx="4" class="c-n"/><text x="758" y="387">shake · soft · idle</text>
+  <rect x="750" y="400" width="150" height="22" rx="4" class="c-w"/><text x="758" y="415">notes rollover</text>
+  <rect x="750" y="428" width="150" height="22" rx="4" class="c-b"/><text x="758" y="443">snapcompact</text>
+  <rect x="750" y="456" width="150" height="22" rx="4" class="c-n"/><text x="758" y="471">handoff</text>
+
+  <!-- services rail -->
+  <text x="30" y="528" class="t-lab">services a mod calls through $</text>
+  <rect x="30"  y="540" width="150" height="40" rx="5" class="rail"/><text x="105" y="565" text-anchor="middle" class="t-mono">$.clock</text>
+  <rect x="210" y="540" width="150" height="40" rx="5" class="rail"/><text x="285" y="565" text-anchor="middle" class="t-mono">$.http</text>
+  <rect x="570" y="540" width="150" height="40" rx="5" class="rail"/><text x="645" y="565" text-anchor="middle" class="t-mono">$.process</text>
+  <rect x="750" y="540" width="150" height="40" rx="5" class="rail"/><text x="825" y="565" text-anchor="middle" class="t-mono">$.model.fork</text>
+  <rect x="930" y="540" width="150" height="40" rx="5" class="rail"/><text x="1005" y="565" text-anchor="middle" class="t-mono">$.agent.spawn</text>
+  <text x="105"  y="600" text-anchor="middle" class="t-sm">timers: idle compaction</text>
+  <text x="285"  y="600" text-anchor="middle" class="t-sm">other vendors, Jev judge</text>
+  <text x="645"  y="600" text-anchor="middle" class="t-sm">eval kernel child process</text>
+  <text x="825"  y="600" text-anchor="middle" class="t-sm">side question on cached history</text>
+  <text x="1005" y="600" text-anchor="middle" class="t-sm">advisors, role subagents</text>
+  <path d="M285 540 V470 H415 V303" class="ln-dash" marker-end="url(#m1)"/>
+  <path d="M645 540 V303" class="ln-dash" marker-end="url(#m1)"/>
+  <path d="M825 540 V481" class="ln-dash" marker-end="url(#m1)"/>
+</svg>
+    </div>
+    <figcaption>Most features cluster on <code>turn.step</code> (one model request, streamed) and <code>turn.complete</code>. Dashed lines show which service a hook relies on: <code>$.http</code> reaches other vendors, <code>$.process</code> runs the eval kernel, <code>$.model.fork</code> writes the handoff on cached history.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ FIT MATRIX ============ -->
+<section id="fit">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">Natural or hacking?</span>
+    <h2>Fit against size</h2>
+    <p>Columns are how natural the fit is. Rows are rough size: S is a single hook and a few hundred lines at most, M is a small mod with its own state, L is a subsystem. Top-left is cheap and safe. Right-hand columns are where upgrades will hurt.</p>
+  </div>
+  <div class="matrix-wrap">
+    <div class="matrix" aria-label="Features by fit and size">
+      <div></div>
+      <div class="hd"><i class="sw n"></i>Native</div>
+      <div class="hd"><i class="sw h"></i>Supported, heavy</div>
+      <div class="hd"><i class="sw w"></i>Workaround</div>
+      <div class="hd"><i class="sw b"></i>Blocked</div>
+      <div class="rh">S</div>
+      <div class="cell"><span class="pill n"><span>Roles</span></span><span class="pill n"><span>Prewalk</span></span><span class="pill n"><span>TTSR tool rules</span></span><span class="pill n"><span>TTSR question rules</span></span><span class="pill n"><span>Fallback for side calls</span></span><span class="pill n"><span>Commands and settings</span></span></div>
+      <div class="cell"></div>
+      <div class="cell"></div>
+      <div class="cell"><span class="pill b"><span>Mid-turn compaction</span></span></div>
+      <div class="rh">M</div>
+      <div class="cell"><span class="pill n"><span>Gateway vendors (B)</span></span><span class="pill n"><span>Advisors</span></span><span class="pill n"><span>JEV decisions</span></span><span class="pill n"><span>shake · handoff · soft · idle</span></span><span class="pill n"><span>Hashline edit</span></span><span class="pill n"><span>Structured subagent results</span></span><span class="pill n"><span>Agent hub pane</span></span></div>
+      <div class="cell"></div>
+      <div class="cell"><span class="pill w"><span>TTSR stream rules</span></span><span class="pill w"><span>Notes rollover</span></span><span class="pill w"><span>Copy-on-write workspaces</span></span></div>
+      <div class="cell"><span class="pill b"><span>snapcompact</span></span></div>
+      <div class="rh">L</div>
+      <div class="cell"></div>
+      <div class="cell"><span class="pill h"><span>Own vendor client (A)</span></span></div>
+      <div class="cell"><span class="pill w"><span>Eval kernel + PTC</span></span></div>
+      <div class="cell"></div>
+    </div>
+  </div>
+  <div class="callout col">
+    <b>The short answer</b>
+    <ul class="plain">
+      <li><b>Feels designed for it:</b> roles, prewalk, advisors, JEV decisions, tool-level TTSR, and the compaction methods that return text. The API docs literally describe these moves: rewrite <code>model</code> per step, answer <code>session.compact</code> with your own messages, append a note into a running turn.</li>
+      <li><b>Feels like hacking:</b> the eval kernel's transport, TTSR on streamed prose, and notes rollover. Each one routes around a stated limit: a child process's stdin can only be written once, streamed text can't be taken back, and compaction can't run mid-turn.</li>
+      <li><b>Supported but expensive:</b> running the main loop on another vendor's model. The API explicitly lets a hook answer a model request itself, so it isn't a hack. The cost is that you rewrite a provider layer.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ MODELS ============ -->
+<section id="models">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">1 · Models</span>
+    <h2>Other vendors, roles and fallback</h2>
+    <p>omp talks to 88 providers and assigns models to roles (<code>smol</code>, <code>slow</code>, <code>tiny</code>, <code>task</code>, <code>advisor</code>, <code>judge</code> and more). Claude Code's own client speaks only the Anthropic Messages API, and a mod can't change its base URL. That leaves two routes, and the choice between them shapes everything else.</p>
+  </div>
+  <figure>
+    <div class="fig">
+<svg viewBox="0 0 1080 360" role="img" aria-label="Option A: the omc turn.step hook never calls the Anthropic client; it translates history and tools, streams from another vendor through curl, and yields chunks back. Option B: the engine's normal Anthropic client is pointed at a gateway via ANTHROPIC_BASE_URL, which forwards to other vendors; the mod only maps roles to model names.">
+  <defs>
+    <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-ink"/></marker>
+    <marker id="m2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-acc"/></marker>
+    <marker id="m2d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+  <text x="20" y="26" class="t-h">A · omc answers every step itself</text>
+  <text x="580" y="26" class="t-h">B · the engine's client points at a gateway</text>
+  <line x1="540" y1="10" x2="540" y2="350" class="ln-dash"/>
+
+  <!-- A -->
+  <rect x="40" y="50" width="220" height="44" rx="6" class="box"/><text x="150" y="77" text-anchor="middle">Claude Code agent loop</text>
+  <line x1="150" y1="94" x2="150" y2="122" class="ln-ink" marker-end="url(#m2)"/>
+  <rect x="40" y="124" width="220" height="44" rx="6" class="box-acc"/><text x="150" y="151" text-anchor="middle" class="t-mono">turn.step hook (omc)</text>
+  <rect x="320" y="124" width="190" height="44" rx="6" class="box-dim"/><text x="415" y="151" text-anchor="middle" class="t-sm">engine's Anthropic client</text>
+  <line x1="262" y1="146" x2="318" y2="146" class="ln-dash"/>
+  <line x1="282" y1="136" x2="298" y2="156" class="x"/><line x1="298" y1="136" x2="282" y2="156" class="x"/>
+  <text x="415" y="188" text-anchor="middle" class="t-sm">next() never called: no request</text>
+  <line x1="150" y1="168" x2="150" y2="196" class="ln-acc" marker-end="url(#m2a)"/>
+  <rect x="40" y="198" width="220" height="44" rx="6" class="box"/><text x="150" y="217" text-anchor="middle">translate history + tools</text><text x="150" y="233" text-anchor="middle" class="t-sm">schemas shipped with the mod</text>
+  <line x1="150" y1="242" x2="150" y2="270" class="ln-acc" marker-end="url(#m2a)"/>
+  <rect x="40" y="272" width="220" height="44" rx="6" class="box"/><text x="150" y="291" text-anchor="middle" class="t-mono">curl -N via $.process</text><text x="150" y="307" text-anchor="middle" class="t-sm">$.http.fetch can't stream</text>
+  <line x1="262" y1="294" x2="318" y2="294" class="ln-acc" marker-end="url(#m2a)"/>
+  <rect x="320" y="272" width="190" height="44" rx="6" class="box"/><text x="415" y="299" text-anchor="middle">OpenAI · Gemini · OpenRouter</text>
+  <path d="M30 294 H20 V146 H38" class="ln" marker-end="url(#m2d)"/>
+  <text x="14" y="225" class="t-sm" transform="rotate(-90 14 225)" text-anchor="middle">chunks yielded back</text>
+
+  <!-- B -->
+  <rect x="600" y="50" width="220" height="44" rx="6" class="box"/><text x="710" y="77" text-anchor="middle">Claude Code agent loop</text>
+  <rect x="870" y="50" width="180" height="44" rx="6" class="box-acc"/><text x="960" y="70" text-anchor="middle" class="t-mono">omc roles</text><text x="960" y="85" text-anchor="middle" class="t-sm">smol → gpt-5.6-luna</text>
+  <line x1="868" y1="72" x2="822" y2="72" class="ln-acc" marker-end="url(#m2a)"/>
+  <text x="845" y="110" text-anchor="middle" class="t-sm">model name per step</text>
+  <line x1="710" y1="94" x2="710" y2="122" class="ln-ink" marker-end="url(#m2)"/>
+  <rect x="600" y="124" width="220" height="44" rx="6" class="box"/><text x="710" y="151" text-anchor="middle">engine's Anthropic client</text>
+  <line x1="710" y1="168" x2="710" y2="196" class="ln-ink" marker-end="url(#m2)"/>
+  <text x="720" y="187" class="t-sm">ANTHROPIC_BASE_URL</text>
+  <rect x="600" y="198" width="220" height="44" rx="6" class="box"/><text x="710" y="217" text-anchor="middle">gateway</text><text x="710" y="233" text-anchor="middle" class="t-sm">omc router + omp auth-gateway</text>
+  <line x1="710" y1="242" x2="710" y2="270" class="ln-ink" marker-end="url(#m2)"/>
+  <rect x="600" y="272" width="220" height="44" rx="6" class="box"/><text x="710" y="299" text-anchor="middle">OpenAI · Gemini · OpenRouter</text>
+  <text x="870" y="215" class="t-sm">translation, OAuth and</text>
+  <text x="870" y="230" class="t-sm">fallback live in the gateway,</text>
+  <text x="870" y="245" class="t-sm">not in the mod</text>
+</svg>
+    </div>
+    <figcaption>In A the mod owns the whole provider layer: it reads history with <code>$.session.messages({as:'api'})</code>, sends it out, and yields text, thinking and tool-call chunks that the engine trusts as the model's answer. In B the mod only picks model names; the gateway does the translation.</figcaption>
+  </figure>
+
+  <div class="cards">
+    <article class="card" data-feature="vendors-b" data-title="Other vendors via gateway (B)" data-fit="n">
+      <div class="top"><h3>Other vendors via gateway (B)</h3><span class="badge">Native · M</span></div>
+      <dl><dt>In omp</dt><dd>OAuth subscriptions (Codex, Antigravity, Copilot…), 88 providers.</dd>
+      <dt>Here</dt><dd>A fixed <code>ANTHROPIC_BASE_URL</code> to a local router that launchd keeps running; the router sends Claude traffic straight through and everything else to <code>omp auth-gateway</code>. The mod installs it, health-checks it and picks the model per step.</dd></dl>
+      <p class="feel"><b>Feel:</b> mostly configuration plus a small helper. Main loop, subagents and side calls all switch together, using your omp logins. The one rough edge: switching it on or off applies from the next session start. See <a href="#gateway">Route B without the user noticing</a>.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="vendors-a" data-title="Own vendor client (A)" data-fit="h">
+      <div class="top"><h3>Own vendor client (A)</h3><span class="badge">Supported, heavy · L</span></div>
+      <dl><dt>In omp</dt><dd>Native wire clients per provider.</dd>
+      <dt>Here</dt><dd><code>turn.step</code> answers without <code>next</code>. Streams via <code>curl -N</code>, translates the vendor's event stream (SSE) into Claude Code's chunks (<code>TurnStepChunk</code>).</dd></dl>
+      <p class="feel"><b>Feel:</b> the hook is documented for exactly this ("an answer without next sends no request"). The cost is everything around it: tool input schemas aren't readable at runtime, so you ship them; thinking you invent is shown but not recorded; each provider's quirks are yours.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="roles" data-title="Model roles" data-fit="n">
+      <div class="top"><h3>Model roles</h3><span class="badge">Native · S</span></div>
+      <dl><dt>In omp</dt><dd><code>modelRoles.*</code>, picked per call site.</dd>
+      <dt>Here</dt><dd>Role table in <code>userConfig</code> (shows in <code>/config</code>). <code>next({...e, model})</code> in <code>turn.step</code>; <code>$.agent.register</code> for scout/reviewer/task agents.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural. The model and effort fields on each step are rewritable by design, main thread and subagents alike. Shipped as a <code>$.roles</code> noun other mods depend on.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="fallback" data-title="Fallback chains" data-fit="n">
+      <div class="top"><h3>Fallback chains</h3><span class="badge">Native · S</span></div>
+      <dl><dt>In omp</dt><dd><code>retry.fallbackChains</code>, usage-aware account switching.</dd>
+      <dt>Here</dt><dd>For calls the mod makes (judge, advisor): retry down the chain on <code>isAnswered:false</code>. Main loop: only through A or a gateway.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural for side calls; every <code>$.model.complete</code> resolves with a reason instead of throwing. Usage-aware switching belongs in the gateway.</p>
+      <div class="decide"></div>
+    </article>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Role</th><th>omp uses it for</th><th>Where it hooks in Claude Code</th></tr></thead>
+      <tbody>
+        <tr><td><code>default</code></td><td>main session model</td><td>the session's model</td></tr>
+        <tr><td><code>smol</code></td><td>prewalk target, scout agent, edit auto-repair</td><td><code>turn.step</code> model rewrite; <code>scout</code> agent via <code>$.agent.register</code></td></tr>
+        <tr><td><code>slow</code></td><td>reviewer agent, advisor fallback</td><td><code>reviewer</code> agent via <code>$.agent.register</code></td></tr>
+        <tr><td><code>task</code></td><td>generic task subagent</td><td>agent type with <code>model</code> set</td></tr>
+        <tr><td><code>tiny</code></td><td>session titles</td><td><code>$.model.complete</code></td></tr>
+        <tr><td><code>advisor</code></td><td>always-on reviewer</td><td>advisor mod (section 5)</td></tr>
+        <tr><td><code>judge</code></td><td>typed decisions (Jev)</td><td><code>$.http.fetch</code> to OpenRouter's decisions API</td></tr>
+        <tr><td><code>commit</code></td><td><code>omp commit</code> messages</td><td><code>/commit</code> command answered by <code>command.run</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="col muted" style="font-size:.9rem">A role can name a non-Anthropic model only once route A or B works. The judge and advisor are the exception: the mod calls them directly over <code>$.http</code>.</p>
+
+  <div class="col" style="display:grid;gap:10px;margin-top:12px">
+    <h3 id="gateway">Route B without the user noticing</h3>
+    <p>omp already ships the gateway. <code>omp auth-gateway serve</code> answers the Anthropic Messages format on <code>/v1/messages</code>, plus OpenAI Chat Completions, Responses and Jev decisions. It translates each request for the target vendor and signs it with your omp logins. It gets those logins from a second omp process, <code>omp auth-broker serve</code>, which holds the tokens and refreshes them. Nobody needs to write a translation layer.</p>
+    <p>A mod can't change Claude Code's base URL while a session runs, and a mod can't listen on a port. So the design fixes the address once and keeps a small helper always running, with the mod in charge of both:</p>
+  </div>
+  <figure>
+    <div class="fig">
+<svg viewBox="0 0 1080 360" role="img" aria-label="Every Claude Code session sends model requests to a local omc router fixed in settings.json. The router passes Claude models straight to api.anthropic.com and sends other models to omp auth-gateway, which gets credentials from omp auth-broker and calls the other vendors. launchd keeps the router running; the omc mod installs it once, writes the base URL once, checks health, restarts it and pushes the role map.">
+  <defs>
+    <marker id="m9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-ink"/></marker>
+    <marker id="m9a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-acc"/></marker>
+  </defs>
+  <rect x="20" y="40" width="220" height="56" rx="6" class="box"/><text x="130" y="64" text-anchor="middle">Claude Code session</text><text x="130" y="82" text-anchor="middle" class="t-sm">any number of them</text>
+  <rect x="20" y="150" width="220" height="56" rx="6" class="box-acc"/><text x="130" y="174" text-anchor="middle" class="t-mono">omc mod</text><text x="130" y="192" text-anchor="middle" class="t-sm">runs inside every session</text>
+  <rect x="20" y="290" width="220" height="56" rx="6" class="box"/><text x="130" y="314" text-anchor="middle" class="t-mono">~/.claude/settings.json</text><text x="130" y="332" text-anchor="middle" class="t-sm">env.ANTHROPIC_BASE_URL</text>
+  <rect x="400" y="40" width="220" height="56" rx="6" class="box-acc"/><text x="510" y="64" text-anchor="middle" class="t-mono">omc router</text><text x="510" y="82" text-anchor="middle" class="t-sm">127.0.0.1:4141 · small Bun script</text>
+  <rect x="400" y="290" width="220" height="56" rx="6" class="rail"/><text x="510" y="314" text-anchor="middle">launchd user agent</text><text x="510" y="332" text-anchor="middle" class="t-sm">starts at login, restarts on crash</text>
+  <rect x="720" y="10" width="180" height="44" rx="6" class="box"/><text x="810" y="37" text-anchor="middle" class="t-mono">api.anthropic.com</text>
+  <rect x="720" y="110" width="180" height="56" rx="6" class="box"/><text x="810" y="134" text-anchor="middle" class="t-mono">omp auth-gateway</text><text x="810" y="152" text-anchor="middle" class="t-sm">translates wire formats</text>
+  <rect x="720" y="230" width="180" height="56" rx="6" class="box"/><text x="810" y="254" text-anchor="middle" class="t-mono">omp auth-broker</text><text x="810" y="272" text-anchor="middle" class="t-sm">logins, token refresh</text>
+  <rect x="930" y="116" width="135" height="44" rx="6" class="box"/><text x="997" y="135" text-anchor="middle">OpenAI · Gemini</text><text x="997" y="150" text-anchor="middle" class="t-sm">OpenRouter · Jev</text>
+
+  <line x1="240" y1="68" x2="398" y2="68" class="ln-ink" marker-end="url(#m9)"/><text x="319" y="58" text-anchor="middle" class="t-lab">every model request</text>
+  <line x1="620" y1="55" x2="718" y2="34" class="ln-ink" marker-end="url(#m9)"/><text x="650" y="30" text-anchor="middle" class="t-lab">claude-*: as is</text>
+  <line x1="620" y1="82" x2="718" y2="136" class="ln-ink" marker-end="url(#m9)"/><text x="640" y="126" class="t-lab">other models</text>
+  <line x1="900" y1="138" x2="928" y2="138" class="ln-ink" marker-end="url(#m9)"/>
+  <line x1="810" y1="166" x2="810" y2="228" class="ln-ink" marker-end="url(#m9)"/><text x="818" y="202" class="t-lab">credentials</text>
+
+  <path d="M240 178 H330 V84 H398" class="ln-acc" stroke-dasharray="5 4" marker-end="url(#m9a)"/>
+  <text x="340" y="124" class="t-lab">health check, restart,</text><text x="340" y="139" class="t-lab">push role → model map</text>
+  <path d="M240 192 H360 V318 H398" class="ln-acc" stroke-dasharray="5 4" marker-end="url(#m9a)"/><text x="368" y="262" class="t-lab">installs once</text>
+  <line x1="130" y1="206" x2="130" y2="288" class="ln-acc" stroke-dasharray="5 4" marker-end="url(#m9a)"/><text x="138" y="252" class="t-lab">writes once</text>
+  <line x1="510" y1="290" x2="510" y2="98" class="ln-dash" marker-end="url(#m9)"/><text x="518" y="200" class="t-lab">keeps it running</text>
+</svg>
+    </div>
+    <figcaption>The base URL in <code>settings.json</code> never changes; the router behind it decides where each request goes. Claude models skip the translation, so Claude Code's caching, thinking and beta features reach Anthropic untouched.</figcaption>
+  </figure>
+  <div class="two">
+    <div style="display:grid;gap:10px">
+      <h3>What the mod does</h3>
+      <ul class="plain">
+        <li><b><code>/omc gateway setup</code>, once.</b> It writes a launchd agent (macOS's per-user service manager) for the router and the two omp processes, starts it, then asks before adding <code>ANTHROPIC_BASE_URL</code> to <code>settings.json</code>. It asks because that one line affects every future Claude Code session, with or without the mod.</li>
+        <li><b>At every session start.</b> It checks the router's health before the first prompt (<code>session.start</code> runs before the first prompt is sent). If the router is down it restarts it with <code>launchctl kickstart</code>, and if that fails it says so in a toast.</li>
+        <li><b>On every model request.</b> It rewrites the model name to the role's real model, e.g. <code>openai-codex/gpt-5.6-luna</code> for <code>smol</code>. The router reads the name and routes the request.</li>
+        <li><b>On every role change.</b> It pushes the new role map to the router over <code>$.http</code>, so the router can also resolve <code>@smol</code>-style names.</li>
+        <li><b>Status and control.</b> The status line shows "gateway ok". <code>/omc gateway status|restart|logs|off</code>. <code>off</code> removes the settings line, and the change applies from the next start.</li>
+      </ul>
+    </div>
+    <div style="display:grid;gap:10px">
+      <h3>Why a router in front of omp's gateway</h3>
+      <ul class="plain">
+        <li><b>omp's gateway has no raw passthrough.</b> Even Claude requests are parsed and re-encoded. That risks dropping things Claude Code relies on: prompt-cache markers, signed thinking blocks, beta headers. The router sends <code>claude-*</code> traffic to Anthropic byte for byte.</li>
+        <li><b>The HTTP gateway needs the broker.</b> <code>omp auth-gateway stdio</code> runs without a broker, but it returns a streamed answer in one piece at the end. That's too slow for an interactive session.</li>
+        <li><b>One owner for login tokens.</b> If the broker and your everyday <code>omp</code> both refresh the same OAuth tokens, a refresh by one can invalidate the other's token. Pointing <code>omp</code> at the broker too (<code>auth.broker.url</code>) leaves the broker as the only one refreshing.</li>
+      </ul>
+      <h3>What can still break</h3>
+      <ul class="plain">
+        <li><b>Model names.</b> Claude Code checks model names against an allowlist. Whether it accepts <code>openai-codex/…</code> behind a custom base URL needs a test. If not, the router maps alias names instead.</li>
+        <li><b>Mixed history.</b> After prewalk switches models mid-session, the history holds Claude's signed thinking blocks and another vendor's reasoning. Both directions need a test.</li>
+        <li><b>Context size.</b> Claude Code doesn't know a foreign model's context window, so its auto-compaction threshold may be wrong for it.</li>
+        <li><b>Sign-in.</b> With a custom base URL, Claude requests go out with whatever credential Claude Code sends. Which header that is under a subscription login needs a test.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ EVAL ============ -->
+<section id="eval">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">2 · Code execution</span>
+    <h2>The eval kernel with full programmatic tool calling</h2>
+    <p>omp's <code>eval</code> tool runs a cell in a JavaScript (Bun) or Python kernel that keeps its variables between calls. Inside a cell, <code>await tool.grep(...)</code> calls any session tool, and <code>completion()</code>, <code>agent()</code>, <code>judge()</code> and <code>workpool()</code> reach models and subagents. This is programmatic tool calling (PTC): the model writes a program that calls tools, instead of making one tool call per turn.</p>
+    <p>In Claude Code the tool side is natural: <code>$.tool.register</code> adds <code>eval</code>, and <code>$.tool.call</code> runs any built-in or MCP tool with the normal permission check. The kernel is the awkward part. <code>$.process.spawn</code> writes stdin once and closes it, so you can't keep a REPL open over stdin. The kernel serves HTTP on a Unix socket instead, and the mod talks to it with <code>$.http.fetch({socketPath})</code>.</p>
+  </div>
+  <figure>
+    <div class="fig">
+<svg viewBox="0 0 910 470" role="img" aria-label="Sequence: the model calls eval with code; the omc tool posts the cell to the Bun kernel over a Unix socket; the kernel pauses on tool.Grep; omc runs $.tool.call with a permission check, posts the result back; the kernel finishes and omc returns the tool result. Kernel state persists between calls.">
+  <defs>
+    <marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-ink"/></marker>
+    <marker id="m3d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+  <rect x="25"  y="16" width="170" height="40" rx="6" class="box"/><text x="110" y="41" text-anchor="middle">Model</text>
+  <rect x="255" y="16" width="170" height="40" rx="6" class="box-acc"/><text x="340" y="41" text-anchor="middle" class="t-mono">mcp__omc__eval</text>
+  <rect x="485" y="16" width="170" height="40" rx="6" class="box"/><text x="570" y="35" text-anchor="middle">Bun kernel</text><text x="570" y="49" text-anchor="middle" class="t-sm">child process, Unix socket</text>
+  <rect x="715" y="16" width="170" height="40" rx="6" class="box"/><text x="800" y="35" text-anchor="middle">Claude Code tools</text><text x="800" y="49" text-anchor="middle" class="t-sm">built-in + MCP</text>
+  <line x1="110" y1="56" x2="110" y2="450" class="ln-dash"/>
+  <line x1="340" y1="56" x2="340" y2="450" class="ln-dash"/>
+  <line x1="570" y1="56" x2="570" y2="450" class="ln-dash"/>
+  <line x1="800" y1="56" x2="800" y2="450" class="ln-dash"/>
+  <rect x="564" y="140" width="12" height="200" rx="2" class="c-w"/>
+
+  <line x1="110" y1="100" x2="336" y2="100" class="ln-ink" marker-end="url(#m3)"/><text x="223" y="92" text-anchor="middle" class="t-mono">eval { code }</text>
+  <line x1="340" y1="140" x2="562" y2="140" class="ln-ink" marker-end="url(#m3)"/><text x="451" y="132" text-anchor="middle">POST /run</text>
+  <line x1="564" y1="180" x2="344" y2="180" class="ln-dash" marker-end="url(#m3d)"/><text x="451" y="172" text-anchor="middle">paused: tool.Grep(args)</text>
+  <line x1="340" y1="220" x2="796" y2="220" class="ln-ink" marker-end="url(#m3)"/><text x="568" y="212" text-anchor="middle" class="t-mono">$.tool.call · permission check</text>
+  <line x1="800" y1="260" x2="344" y2="260" class="ln-dash" marker-end="url(#m3d)"/><text x="568" y="252" text-anchor="middle">result</text>
+  <line x1="340" y1="300" x2="562" y2="300" class="ln-ink" marker-end="url(#m3)"/><text x="451" y="292" text-anchor="middle">POST /resume { result }</text>
+  <line x1="564" y1="340" x2="344" y2="340" class="ln-dash" marker-end="url(#m3d)"/><text x="451" y="332" text-anchor="middle">done { value, logs }</text>
+  <line x1="340" y1="380" x2="114" y2="380" class="ln-dash" marker-end="url(#m3d)"/><text x="223" y="372" text-anchor="middle">tool result</text>
+  <rect x="470" y="400" width="200" height="40" rx="5" class="rail"/><text x="570" y="418" text-anchor="middle" class="t-sm">variables, imports, open handles</text><text x="570" y="432" text-anchor="middle" class="t-sm">stay until the mod reloads</text>
+  <text x="352" y="196" class="t-sm">steps 3–6 repeat per tool call</text>
+</svg>
+    </div>
+    <figcaption>The kernel can't reach <code>$</code>, so every tool call inside a cell travels back through the mod. That's the right shape anyway: permissions, hooks and transcripts stay in force. Waiting inside <code>$</code> calls doesn't count against the mod's 10-second budget for its own code, so long cells are fine.</figcaption>
+  </figure>
+  <div class="cards">
+    <article class="card" data-feature="eval-ptc" data-title="Eval kernel + PTC" data-fit="w">
+      <div class="top"><h3>Eval kernel + PTC</h3><span class="badge">Workaround · L</span></div>
+      <dl><dt>In omp</dt><dd>Retained Bun VM / IPython kernel, <code>tool.*</code>, <code>completion</code>, <code>agent</code>, <code>workpool</code>, <code>judge</code>.</dd>
+      <dt>Here</dt><dd><code>$.tool.register</code> + <code>$.tool.call</code> (native); kernel over a Unix socket (workaround); <code>agent()</code> via <code>$.agent.spawn</code>; <code>completion()</code> via <code>$.model.complete</code>.</dd></dl>
+      <p class="feel"><b>Feel:</b> the core is natural; the transport is the hack. The kernel restarts whenever the mod reloads after an edit, which only happens while developing it. Open questions: whether a plugin tool can return an image (for <code>display()</code>), and Python later or not at all.</p>
+      <div class="decide"></div>
+    </article>
+  </div>
+</section>
+
+<!-- ============ PREWALK + JEV ============ -->
+<section id="decisions">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">3 · Harness decisions</span>
+    <h2>Prewalk and Jev-judged decisions</h2>
+    <p><b>Prewalk</b> plans on a strong model, then switches to a cheap one for the edits. In the mod it's a small state machine kept in <code>$.state</code> (session values that survive a hot reload): <code>turn.complete</code> moves it forward and <code>turn.step</code> rewrites the model once it flips.</p>
+  </div>
+  <figure>
+    <div class="fig small">
+<svg viewBox="0 0 920 130" role="img" aria-label="Prewalk state machine: Armed with a plan nudge, then Gate open after a successful todo, then Switched to the smol model with a checklist steer after the first turn with an edit or write ends, then Done with roles untouched.">
+  <defs><marker id="m4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-ink"/></marker></defs>
+  <rect x="20"  y="50" width="190" height="56" rx="28" class="box"/><text x="115" y="74" text-anchor="middle" class="t-h">Armed</text><text x="115" y="92" text-anchor="middle" class="t-sm">plan nudge in prompt.compose</text>
+  <rect x="250" y="50" width="190" height="56" rx="28" class="box"/><text x="345" y="74" text-anchor="middle" class="t-h">Gate open</text><text x="345" y="92" text-anchor="middle" class="t-sm">still on @default</text>
+  <rect x="480" y="50" width="190" height="56" rx="28" class="box-acc"/><text x="575" y="74" text-anchor="middle" class="t-h">Switched</text><text x="575" y="92" text-anchor="middle" class="t-sm">model → @smol, checklist steer</text>
+  <rect x="710" y="50" width="190" height="56" rx="28" class="box"/><text x="805" y="74" text-anchor="middle" class="t-h">Done</text><text x="805" y="92" text-anchor="middle" class="t-sm">roles untouched</text>
+  <line x1="210" y1="78" x2="248" y2="78" class="ln-ink" marker-end="url(#m4)"/><text x="230" y="38" text-anchor="middle" class="t-lab">todo succeeds</text>
+  <line x1="440" y1="78" x2="478" y2="78" class="ln-ink" marker-end="url(#m4)"/><text x="460" y="24" text-anchor="middle" class="t-lab">turn with edit/write</text><text x="460" y="38" text-anchor="middle" class="t-lab">ends</text>
+  <line x1="670" y1="78" x2="708" y2="78" class="ln-ink" marker-end="url(#m4)"/><text x="690" y="38" text-anchor="middle" class="t-lab">disarm</text>
+</svg>
+    </div>
+    <figcaption>Every transition is something a hook already sees: a tool result, a turn ending, the next model request.</figcaption>
+  </figure>
+  <div class="col" style="display:grid;gap:10px">
+    <p><b>Jev</b> is TypeSafe's judgment model (served through OpenRouter's decisions API). omp asks it typed questions instead of using a chat model: which effort level a prompt deserves, whether a turn promised an action and then stopped, whether an answer breaks a question-style rule. Each one maps to a hook:</p>
+    <ul class="plain">
+      <li><b>Pick effort:</b> at <code>prompt.submit</code>, one choice question over the prompt; then <code>turn.step</code> rewrites <code>effort</code>.</li>
+      <li><b>Unexpected stop:</b> at <code>turn.complete</code>, a yes/no question on the last answer; if yes, <code>$.prompt.submit</code> queues "continue". It arrives as a new turn, not a continuation of the old one.</li>
+      <li><b>Question rules:</b> at <code>turn.complete</code>, all candidate questions in one judge request (covered under TTSR).</li>
+    </ul>
+  </div>
+  <div class="cards">
+    <article class="card" data-feature="prewalk" data-title="Prewalk" data-fit="n">
+      <div class="top"><h3>Prewalk</h3><span class="badge">Native · S</span></div>
+      <dl><dt>In omp</dt><dd>Plan on default, switch to smol after the first edit turn.</dd>
+      <dt>Here</dt><dd><code>$.state</code> gate + <code>turn.complete</code> + <code>turn.step</code> model rewrite; <code>/prewalk</code> command.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural, maybe 100 lines. For subagents it depends on whether spawned subagents pass through the same hook (open question).</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="jev" data-title="JEV decisions" data-fit="n">
+      <div class="top"><h3>JEV decisions</h3><span class="badge">Native · M</span></div>
+      <dl><dt>In omp</dt><dd>Auto thinking level, unexpected-stop detection, semantic <code>find</code>.</dd>
+      <dt>Here</dt><dd><code>$.http.fetch</code> to the decisions API; <code>effort</code> rewrite; <code>$.prompt.submit</code> to resume.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural. A small typed client plus three hooks. <code>$.model.classify</code> is a built-in fallback that picks one label using a small Claude model.</p>
+      <div class="decide"></div>
+    </article>
+  </div>
+</section>
+
+<!-- ============ TTSR ============ -->
+<section id="ttsr">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">4 · Rules</span>
+    <h2>TTSR: rules that fire while the model writes</h2>
+    <p>omp's time-traveling stream rules watch the model's output as it streams. When a regex, an ast-grep pattern or a judge question matches, omp aborts the response, throws the partial output away, injects the rule as a hidden interrupt and lets the model try again. Rules are Markdown files with a frontmatter <code>condition</code>, <code>scope</code> and <code>globs</code>. omp's rule format can be reused as is.</p>
+    <p>Three kinds of rule, three different fits:</p>
+    <ul class="plain">
+      <li><b>Tool rules</b> (on edit or write arguments): <code>tool.call</code> returns <code>{deny}</code> with the rule body before anything touches disk. Natural, and arguably better than omp's, because the deny happens before any side effect.</li>
+      <li><b>Question rules:</b> one judge request at <code>turn.complete</code>, and the verdict comes back as a note. Natural.</li>
+      <li><b>Stream rules</b> (on prose or thinking): a workaround, shown below.</li>
+    </ul>
+  </div>
+  <figure>
+    <div class="fig">
+<svg viewBox="0 0 1000 250" role="img" aria-label="omp: streamed tokens are dropped after a regex hit, a system-interrupt with the rule body is injected, and the model continues. Claude Code: tokens already yielded stay in history; on the hit omc stops forwarding and yields a synthetic call to its rule_interrupt tool, whose result carries the rule into the next step.">
+  <defs>
+    <pattern id="hatchW" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" class="hatch-work"/></pattern>
+    <marker id="m5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-ink"/></marker>
+  </defs>
+  <rect x="0" y="22" width="1000" height="90" rx="6" class="lane"/>
+  <rect x="0" y="140" width="1000" height="90" rx="6" class="lane"/>
+  <text x="14" y="46" class="t-h">omp</text>
+  <text x="14" y="164" class="t-h">Claude Code</text>
+  <text x="14" y="180" class="t-sm">(omc mod)</text>
+
+  <!-- omp lane -->
+  <rect x="120" y="58" width="400" height="22" rx="3" fill="url(#hatchW)" stroke="none"/>
+  <rect x="120" y="58" width="400" height="22" rx="3" fill="none" class="ln-work"/>
+  <text x="320" y="100" text-anchor="middle" class="t-sm">partial output dropped (contextMode: discard)</text>
+  <line x1="522" y1="46" x2="522" y2="92" class="match"/><text x="522" y="40" text-anchor="middle" class="t-lab">regex hits</text>
+  <line x1="526" y1="69" x2="566" y2="69" class="ln-ink" marker-end="url(#m5)"/>
+  <rect x="570" y="52" width="200" height="34" rx="5" class="c-w"/><text x="670" y="73" text-anchor="middle" class="t-mono">&lt;system-interrupt&gt; + rule</text>
+  <line x1="770" y1="69" x2="806" y2="69" class="ln-ink" marker-end="url(#m5)"/>
+  <rect x="810" y="52" width="170" height="34" rx="5" class="box"/><text x="895" y="73" text-anchor="middle">model tries again</text>
+
+  <!-- claude lane -->
+  <g>
+    <rect x="120" y="176" width="400" height="22" rx="3" class="tok"/>
+  </g>
+  <text x="320" y="218" text-anchor="middle" class="t-sm">already yielded: shown and kept in history</text>
+  <line x1="522" y1="164" x2="522" y2="210" class="match"/><text x="522" y="158" text-anchor="middle" class="t-lab">regex hits</text>
+  <line x1="526" y1="187" x2="566" y2="187" class="ln-ink" marker-end="url(#m5)"/>
+  <rect x="570" y="170" width="200" height="34" rx="5" class="c-w"/><text x="670" y="186" text-anchor="middle" class="t-mono">yield tool chunk</text><text x="670" y="199" text-anchor="middle" class="t-sm">rule_interrupt</text>
+  <line x1="770" y1="187" x2="806" y2="187" class="ln-ink" marker-end="url(#m5)"/>
+  <rect x="810" y="170" width="170" height="34" rx="5" class="box"/><text x="895" y="186" text-anchor="middle">tool result = rule</text><text x="895" y="199" text-anchor="middle" class="t-sm">next step reads it</text>
+</svg>
+    </div>
+    <figcaption>Two limits force the detour. A chunk a hook has yielded stays in the response, so text already shown can't be taken back. And a retried request carries the same messages, so the rule can't be injected into it. To drop the text as omp does, the mod has to buffer the stream before showing it, which costs latency.</figcaption>
+  </figure>
+  <div class="cards">
+    <article class="card" data-feature="ttsr-tool" data-title="TTSR tool rules" data-fit="n">
+      <div class="top"><h3>TTSR tool rules</h3><span class="badge">Native · S</span></div>
+      <dl><dt>In omp</dt><dd>Regex/AST on edit and write arguments, blocks before side effects.</dd>
+      <dt>Here</dt><dd><code>tool.call</code> deny with the rule body; ast-grep via <code>$.process.run</code>.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural. Same rule files, discovered from <code>.omp/rules</code> and <code>.claude/rules</code>.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="ttsr-question" data-title="TTSR question rules" data-fit="n">
+      <div class="top"><h3>TTSR question rules</h3><span class="badge">Native · S</span></div>
+      <dl><dt>In omp</dt><dd>Judge checks yes/no questions after each output.</dd>
+      <dt>Here</dt><dd><code>turn.complete</code> → one judge batch → <code>$.session.append</code> note.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural. Depends on the JEV client.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="ttsr-stream" data-title="TTSR stream rules" data-fit="w">
+      <div class="top"><h3>TTSR stream rules</h3><span class="badge">Workaround · M</span></div>
+      <dl><dt>In omp</dt><dd>Abort, discard, inject interrupt, retry.</dd>
+      <dt>Here</dt><dd><code>turn.step</code> generator watches chunks; on a hit, stop forwarding and yield a synthetic call to <code>rule_interrupt</code>.</dd></dl>
+      <p class="feel"><b>Feel:</b> hacky. It fakes a tool call to get a message in. Untested: whether a hook can drop <code>next</code> mid-stream and yield its own tool call.</p>
+      <div class="decide"></div>
+    </article>
+  </div>
+</section>
+
+<!-- ============ CONTEXT ============ -->
+<section id="context">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">5 · Context</span>
+    <h2>Custom compaction</h2>
+    <p>Here Claude Code is more open than expected. When the engine compacts, the <code>session.compact</code> event lets a hook return any list of messages instead of the engine's summary. omp walks a method order and falls through on failure. The same chain fits inside one hook.</p>
+  </div>
+  <figure>
+    <div class="fig">
+<svg viewBox="0 0 1000 260" role="img" aria-label="The engine decides to compact; the omc session.compact hook tries shake, then handoff, then soft (the engine's own summary via next), and returns messages. snapcompact is crossed out because image frames cannot be put back.">
+  <defs>
+    <marker id="m6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-ink"/></marker>
+    <marker id="m6d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+  </defs>
+  <rect x="20" y="96" width="170" height="52" rx="6" class="box"/><text x="105" y="118" text-anchor="middle">context full</text><text x="105" y="135" text-anchor="middle" class="t-sm">or /compact, or idle timer</text>
+  <line x1="190" y1="122" x2="238" y2="122" class="ln-ink" marker-end="url(#m6)"/>
+  <rect x="240" y="96" width="180" height="52" rx="6" class="box-acc"/><text x="330" y="118" text-anchor="middle" class="t-mono">session.compact</text><text x="330" y="135" text-anchor="middle" class="t-sm">omc hook, methodOrder</text>
+  <path d="M420 122 H450 V40 H478" class="ln-ink" marker-end="url(#m6)"/>
+  <path d="M450 122 V100 H478" class="ln-ink" marker-end="url(#m6)"/>
+  <path d="M450 122 V160 H478" class="ln-ink" marker-end="url(#m6)"/>
+  <path d="M450 160 V220 H478" class="ln-dash"/>
+  <text x="458" y="34" class="t-lab">1</text><text x="458" y="94" class="t-lab">2</text><text x="458" y="154" class="t-lab">3</text>
+  <rect x="480" y="22" width="250" height="40" rx="5" class="c-n"/><text x="492" y="39" class="t-mono">shake</text><text x="492" y="54" class="t-sm">no model: old results → files on disk</text>
+  <rect x="480" y="82" width="250" height="40" rx="5" class="c-n"/><text x="492" y="99" class="t-mono">handoff</text><text x="492" y="114" class="t-sm">$.model.fork writes a doc, cache reused</text>
+  <rect x="480" y="142" width="250" height="40" rx="5" class="c-n"/><text x="492" y="159" class="t-mono">soft</text><text x="492" y="174" class="t-sm">next(e): the engine's own summary</text>
+  <rect x="480" y="202" width="250" height="40" rx="5" class="c-b"/><text x="492" y="219" class="t-mono">snapcompact</text><text x="492" y="234" class="t-sm">needs images back in context</text>
+  <line x1="740" y1="210" x2="760" y2="234" class="x"/><line x1="760" y1="210" x2="740" y2="234" class="x"/>
+  <path d="M730 42 H790 V108 H818" class="ln" marker-end="url(#m6d)"/>
+  <path d="M730 102 H790" class="ln"/>
+  <path d="M730 162 H790 V136" class="ln"/>
+  <rect x="820" y="96" width="160" height="52" rx="6" class="box"/><text x="900" y="118" text-anchor="middle" class="t-mono">{ messages }</text><text x="900" y="135" text-anchor="middle" class="t-sm">first that succeeds</text>
+</svg>
+    </div>
+    <figcaption>Answering <code>session.compact</code> without calling <code>next</code> replaces the engine's algorithm. Returned messages can be plain text and tool blocks. That rules out snapcompact (old history printed onto images for a vision model to read back): a mod can append and return text only.</figcaption>
+  </figure>
+  <div class="col" style="display:grid;gap:10px">
+    <p><b>The catch is timing.</b> <code>$.session.compact</code> rejects while a turn is running. omp's notes-backed context (a <code>context_notes</code> tool plus <code>new_context</code> to roll over to a fresh window) wants to roll over in the middle of a tool loop. In Claude Code the mod has to do it in four steps:</p>
+    <ol class="plain">
+      <li>The model calls <code>new_context</code>.</li>
+      <li>The tool replies "rolling over" and the turn ends.</li>
+      <li>A <code>turn.complete</code> hook compacts down to the notebook and the recent tool calls.</li>
+      <li><code>$.prompt.submit</code> sends "continue", which starts a new turn.</li>
+    </ol>
+  </div>
+  <div class="cards">
+    <article class="card" data-feature="compaction" data-title="shake · handoff · soft · idle" data-fit="n">
+      <div class="top"><h3>shake · handoff · soft · idle</h3><span class="badge">Native · M</span></div>
+      <dl><dt>In omp</dt><dd><code>compaction.methodOrder</code>, idle compaction, <code>/handoff</code>, <code>/shake</code>.</dd>
+      <dt>Here</dt><dd><code>session.compact</code> answer; <code>$.model.fork</code> for handoff; <code>$.clock.after</code> for idle; slash commands.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural. The event is built for replacement, including vetoing with <code>{skip}</code>.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="notes" data-title="Notes rollover" data-fit="w">
+      <div class="top"><h3>Notes rollover</h3><span class="badge">Workaround · M</span></div>
+      <dl><dt>In omp</dt><dd><code>context_notes</code> notebook, <code>new_context</code> at a safe tool boundary.</dd>
+      <dt>Here</dt><dd>End turn → compact in <code>turn.complete</code> → <code>$.prompt.submit</code>.</dd></dl>
+      <p class="feel"><b>Feel:</b> hacky. A rollover becomes a visible turn break. Untested: whether compaction is allowed from inside <code>turn.complete</code>.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="snapcompact" data-title="snapcompact" data-fit="b">
+      <div class="top"><h3>snapcompact</h3><span class="badge">Blocked</span></div>
+      <dl><dt>In omp</dt><dd>History printed onto PNG frames, read back by a vision model.</dd>
+      <dt>Here</dt><dd>Compact answers and plugin appends are text only.</dd></dl>
+      <p class="feel"><b>Feel:</b> not possible unless a plugin tool result can carry an image (one test settles it).</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="midturn" data-title="Mid-turn compaction" data-fit="b">
+      <div class="top"><h3>Mid-turn compaction</h3><span class="badge">Blocked</span></div>
+      <dl><dt>In omp</dt><dd>Compacts inside a long tool loop.</dd>
+      <dt>Here</dt><dd><code>$.session.compact</code> rejects while a turn runs.</dd></dl>
+      <p class="feel"><b>Feel:</b> blocked. Claude Code's own auto-compaction still runs; the mod's methods apply when it does.</p>
+      <div class="decide"></div>
+    </article>
+  </div>
+</section>
+
+<!-- ============ ADVISORS ============ -->
+<section id="advisors">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">6 · Oversight</span>
+    <h2>Advisors that are always on</h2>
+    <p>omp's advisor reviews each new stretch of the transcript as the primary works, in its own context, and speaks only through an <code>advise</code> tool with a severity: <code>nit</code>, <code>concern</code> or <code>blocker</code>. Blockers steer the live turn. With <code>syncBacklog: 1</code> (your setting), the primary waits up to 30 seconds whenever a review is pending.</p>
+    <p>Every piece has a direct hook here. The review runs in the background with <code>$.agent.spawn</code> (or over <code>$.http</code> for a non-Claude advisor). <code>$.session.append</code> adds a note that a running turn reads at its next step. The wait is a <code>turn.step</code> hook that awaits the review before letting the next request through, and waiting inside <code>$</code> calls doesn't count against the 10-second budget.</p>
+  </div>
+  <figure>
+    <div class="fig">
+<svg viewBox="0 0 880 250" role="img" aria-label="Timeline: main loop steps 1 and 2 each hand a transcript delta to the advisor lane; review 2 finds a blocker while the main loop waits under syncBacklog; step 3 starts after the blocker is appended and reads it; review 3 continues in parallel.">
+  <defs>
+    <marker id="m7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah"/></marker>
+    <marker id="m7w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah-work"/></marker>
+    <pattern id="hatchG" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" class="hatch-line"/></pattern>
+  </defs>
+  <rect x="0" y="40" width="880" height="70" rx="6" class="lane"/>
+  <rect x="0" y="150" width="880" height="70" rx="6" class="lane"/>
+  <text x="12" y="80" class="t-h">main</text>
+  <text x="12" y="190" class="t-h">advisor</text>
+
+  <rect x="80"  y="58" width="110" height="34" rx="5" class="box"/><text x="135" y="80" text-anchor="middle">step 1</text>
+  <rect x="250" y="58" width="110" height="34" rx="5" class="box"/><text x="305" y="80" text-anchor="middle">step 2</text>
+  <rect x="360" y="58" width="200" height="34" rx="0" fill="url(#hatchG)" stroke="none"/>
+  <text x="460" y="30" text-anchor="middle" class="t-lab">waits: syncBacklog = 1 (≤ 30 s)</text>
+  <path d="M362 50 V44 H558 V50" class="ln"/>
+  <rect x="570" y="58" width="120" height="34" rx="5" class="box-acc"/><text x="630" y="80" text-anchor="middle">step 3 reads note</text>
+  <rect x="750" y="58" width="110" height="34" rx="5" class="box"/><text x="805" y="80" text-anchor="middle">step 4</text>
+
+  <rect x="200" y="168" width="140" height="34" rx="5" class="box"/><text x="270" y="190" text-anchor="middle">review Δ1</text>
+  <rect x="370" y="168" width="180" height="34" rx="5" class="c-w"/><text x="460" y="190" text-anchor="middle">review Δ2 → blocker</text>
+  <rect x="700" y="168" width="150" height="34" rx="5" class="box"/><text x="775" y="190" text-anchor="middle">review Δ3</text>
+
+  <line x1="190" y1="92" x2="208" y2="166" class="ln" marker-end="url(#m7)"/><text x="160" y="135" class="t-sm">Δ</text>
+  <line x1="360" y1="92" x2="378" y2="166" class="ln" marker-end="url(#m7)"/><text x="330" y="135" class="t-sm">Δ</text>
+  <line x1="550" y1="168" x2="576" y2="94" class="ln-work" marker-end="url(#m7w)"/><text x="572" y="140" class="t-lab">$.session.append</text>
+  <line x1="690" y1="92" x2="708" y2="166" class="ln" marker-end="url(#m7)"/><text x="660" y="135" class="t-sm">Δ</text>
+</svg>
+    </div>
+    <figcaption>The advisor sees only the delta (Δ) since its last review, in its own context. Nits and concerns can be held back and shown as toasts or in a side pane, so only blockers interrupt the main thread.</figcaption>
+  </figure>
+  <div class="cards">
+    <article class="card" data-feature="advisors" data-title="Always-on advisors" data-fit="n">
+      <div class="top"><h3>Always-on advisors</h3><span class="badge">Native · M</span></div>
+      <dl><dt>In omp</dt><dd><code>advisor.*</code>, <code>WATCHDOG.yml</code> roster, severities, dedupe, rate limits.</dd>
+      <dt>Here</dt><dd><code>turn.step</code> / <code>turn.complete</code> → background review → <code>$.session.append</code>; roster file read with <code>$.fs</code>; a pane listing notes.</dd></dl>
+      <p class="feel"><b>Feel:</b> the most natural fit on the list. The only rough edge: <code>$.session.append</code> takes text blocks only, which is all a note needs.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="hashline" data-title="Hashline edit" data-fit="n">
+      <div class="top"><h3>Hashline edit</h3><span class="badge">Native · M</span></div>
+      <dl><dt>In omp</dt><dd><code>[PATH#TAG]</code> edits checked against a tag taken when the file was last read; stale edits rejected.</dd>
+      <dt>Here</dt><dd><code>$.tool.register</code> an <code>edit</code> tool; <code>tool.call</code> deny on the built-in Edit; tags in <code>$.state</code>.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural. You lose the built-in diff view unless you redraw it with a <code>ui.render</code> hook on <code>ToolResult</code>.</p>
+      <div class="decide"></div>
+    </article>
+  </div>
+</section>
+
+<!-- ============ CONTROL ============ -->
+<section id="control">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">7 · Control</span>
+    <h2>Commands and settings to drive all of this</h2>
+    <p>omp puts each feature behind a slash command and a settings key (<code>/advisor on</code>, <code>/prewalk restart</code>, <code>/handoff</code>, <code>/omfg</code>, <code>/model</code> → Roles). Mods get the same three controls, and all of them are native:</p>
+    <ul class="plain">
+      <li><b>Slash commands:</b> <code>$.command.register</code> at session start, answered by a <code>command.run</code> hook. A command marked <code>immediate</code> runs even while a turn is in progress.</li>
+      <li><b>Settings:</b> fields declared in the mod's manifest (<code>userConfig</code>) appear as rows in Claude Code's own <code>/config</code> menu. A field with a fixed list of values becomes a picker. Changing one reloads the mod with the new value.</li>
+      <li><b>A control pane:</b> <code>$.ui.open</code> opens a side pane with buttons and pickers, redrawn from <code>$.state</code> whenever a value changes. Status-line text and toasts show what is running.</li>
+    </ul>
+  </div>
+  <figure>
+    <div class="fig small">
+<svg viewBox="0 0 760 330" role="img" aria-label="Mock of the /omc control pane in the terminal: role assignments, toggles for prewalk, advisor and TTSR, the compaction method order, and the status line showing advisor state and backlog.">
+  <rect x="0" y="0" width="760" height="330" rx="8" class="box"/>
+  <rect x="0" y="0" width="760" height="28" rx="8" class="lane"/>
+  <circle cx="18" cy="14" r="5" class="c-w"/><circle cx="36" cy="14" r="5" class="c-h"/><circle cx="54" cy="14" r="5" class="c-n"/>
+  <text x="380" y="18" text-anchor="middle" class="t-sm">claude — ~/code/app</text>
+  <line x1="470" y1="28" x2="470" y2="296" class="ln"/>
+  <text x="20" y="56" class="t-mono t-sm">… transcript …</text>
+  <text x="20" y="80" class="t-mono t-sm">● Edit src/auth.ts</text>
+  <text x="20" y="100" class="t-mono t-sm">  ⎿ advisor (concern): token TTL never checked</text>
+  <text x="20" y="276" class="t-mono">&gt; /omc</text>
+  <text x="486" y="54" class="t-h">omc</text>
+  <text x="486" y="80" class="t-lab">ROLES</text>
+  <text x="486" y="100" class="t-mono">smol</text><text x="740" y="100" text-anchor="end" class="t-mono t-sm">gpt-5.6-luna ▾</text>
+  <text x="486" y="118" class="t-mono">slow</text><text x="740" y="118" text-anchor="end" class="t-mono t-sm">claude-fable-5-1 ▾</text>
+  <text x="486" y="136" class="t-mono">judge</text><text x="740" y="136" text-anchor="end" class="t-mono t-sm">jev-1.13 ▾</text>
+  <text x="486" y="164" class="t-lab">FEATURES</text>
+  <text x="486" y="184" class="t-mono">prewalk</text><rect x="680" y="172" width="60" height="18" rx="9" class="c-n"/><text x="710" y="185" text-anchor="middle" class="t-sm">armed</text>
+  <text x="486" y="206" class="t-mono">advisor</text><rect x="680" y="194" width="60" height="18" rx="9" class="c-n"/><text x="710" y="207" text-anchor="middle" class="t-sm">on · 1</text>
+  <text x="486" y="228" class="t-mono">ttsr</text><rect x="680" y="216" width="60" height="18" rx="9" class="c-n"/><text x="710" y="229" text-anchor="middle" class="t-sm">12 rules</text>
+  <text x="486" y="256" class="t-lab">COMPACTION ORDER</text>
+  <text x="486" y="276" class="t-mono t-sm">[shake] → [handoff] → [soft]</text>
+  <rect x="0" y="296" width="760" height="34" class="lane"/>
+  <text x="20" y="317" class="t-mono t-sm">fable-5-1 · advisor reviewing Δ3 · backlog 1 · ttsr ok</text>
+</svg>
+    </div>
+    <figcaption>A mock of how it could look, not a screenshot. The pane is drawn by a <code>ui.render</code> hook on <code>Pane</code>. The bottom line is <code>$.ui.status</code>. Every value shown also lives in <code>/config</code>, so it can be scripted.</figcaption>
+  </figure>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>/omc</code></td><td>Opens the control pane above: roles, feature switches, compaction order.</td></tr>
+        <tr><td><code>/roles [role model]</code></td><td>Shows or sets role assignments.</td></tr>
+        <tr><td><code>/prewalk [restart]</code></td><td>Arms prewalk, or switches back to <code>default</code> and arms it again.</td></tr>
+        <tr><td><code>/advisor on|off|status|dump</code></td><td>Controls the advisor; <code>dump</code> shows its notes so far.</td></tr>
+        <tr><td><code>/ttsr list|test|scan</code></td><td>Lists rules, tests one against a text, or scans recent history for hits.</td></tr>
+        <tr><td><code>/omfg &lt;complaint&gt;</code></td><td>Drafts a new rule from a complaint ("stop adding try/catch everywhere") and checks it against recent history, as omp does.</td></tr>
+        <tr><td><code>/handoff</code>, <code>/shake</code></td><td>Runs that compaction method now (only between turns).</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cards">
+    <article class="card" data-feature="commands" data-title="Commands and settings" data-fit="n">
+      <div class="top"><h3>Commands and settings</h3><span class="badge">Native · S</span></div>
+      <dl><dt>In omp</dt><dd>Slash commands per feature, <code>config.yml</code> keys, <code>/model</code> Roles view, <code>/advisor configure</code>.</dd>
+      <dt>Here</dt><dd><code>$.command.register</code>, <code>userConfig</code> rows in <code>/config</code>, a control pane, <code>$.ui.status</code>.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural. Each mod registers its own commands, and the roles mod adds the shared <code>/omc</code> pane.</p>
+      <div class="decide"></div>
+    </article>
+  </div>
+</section>
+
+<!-- ============ SUBAGENTS ============ -->
+<section id="subagents">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">8 · Subagents</span>
+    <h2>Subagents: omp against Claude Code</h2>
+    <p>Both tools let the main agent hand work to child agents with their own prompt, tools and model, running in parallel or in the background. omp goes further on orchestration: structured results, a model from any vendor, workspaces that merge back automatically, nesting, and live control. Claude Code is stronger on context and safety: a child can be forked with the whole conversation, can run in the cloud, and stays under your permission settings.</p>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Capability</th><th>omp</th><th>Claude Code</th><th>Edge</th><th>Can a mod close the gap?</th></tr></thead>
+      <tbody>
+        <tr><td>Model per child</td><td>Any vendor; an ordered list with role aliases (<code>@smol</code>); tag a model in the prompt with <code>^</code></td><td>Claude models (others only through a gateway)</td><td>omp</td><td>Through route B, or route A if test 2 passes</td></tr>
+        <tr><td>Structured result</td><td><code>outputSchema</code> per spawn, validated with retries; child must finish through a <code>yield</code> tool</td><td>Free text from the Agent tool; schemas only inside workflow scripts</td><td>omp</td><td>Yes: a <code>yield</code> plugin tool that validates the schema in <code>tool.call</code></td></tr>
+        <tr><td>Shared context</td><td>Child starts fresh; a batch shares one <code>context</code> block</td><td>Fresh child, or a fork that inherits the whole conversation</td><td>Claude</td><td>n/a</td></tr>
+        <tr><td>Isolated workspace</td><td>Copy-on-write clone (APFS, btrfs, overlayfs…); changes merged back as a patch or a branch automatically</td><td>Git worktree (left for you to merge), or a remote cloud sandbox</td><td>omp locally; Claude for cloud</td><td>Partly: clone with <code>$.process</code>, spawn with <code>cwd</code>, apply the diff afterwards</td></tr>
+        <tr><td>Nesting</td><td>Children spawn children (depth 2 by default), with a per-agent <code>spawns</code> allow-list</td><td>Not confirmed for subagents; workflows handle multi-level fan-out</td><td>omp</td><td>Unclear; needs a check</td></tr>
+        <tr><td>Watch and steer</td><td>Agent Hub (<code>Alt+A</code>): live roster, cost, tokens, open a child's transcript and type into it</td><td>Background tasks list; <code>SendMessage</code> to continue or steer an agent</td><td>omp</td><td>Yes: a pane over <code>$.agent.list()</code>, steering with <code>$.session.append({agentId})</code></td></tr>
+        <tr><td>Revive later</td><td>Idle children parked after 7 min, revived from their saved transcript</td><td><code>SendMessage</code> resumes a finished agent with its context</td><td>Even</td><td>n/a</td></tr>
+        <tr><td>Per-child harness</td><td>Prewalk, advisor and thinking level per agent type</td><td>Model, effort, tools, hooks, MCP servers, permission mode per agent type</td><td>Even, different knobs</td><td>Prewalk and advisor per child, if test 2 passes</td></tr>
+        <tr><td>Code-driven fan-out</td><td><code>agent()</code> and <code>workpool()</code> from the eval kernel; children can call functions defined in the parent kernel</td><td>Workflow scripts (<code>parallel</code>, <code>pipeline</code>, schemas)</td><td>omp for kernel callbacks</td><td>Yes, inside the eval mod</td></tr>
+        <tr><td>Start-up speed</td><td>Children start while the spawn call is still streaming</td><td>Children start once the call is complete</td><td>omp</td><td>No</td></tr>
+        <tr><td>Permissions</td><td>Children always run with approvals off (no screen to ask on)</td><td>Children follow the session's permission mode</td><td>Claude</td><td>n/a</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cards">
+    <article class="card" data-feature="sub-schema" data-title="Structured subagent results" data-fit="n">
+      <div class="top"><h3>Structured subagent results</h3><span class="badge">Native · M</span></div>
+      <dl><dt>In omp</dt><dd><code>outputSchema</code> per spawn; child ends with <code>yield</code>, validated, up to 3 reminders.</dd>
+      <dt>Here</dt><dd><code>$.agent.register</code> agents that must call a <code>yield</code> plugin tool; <code>tool.call</code> validates against the schema and replies with errors until it passes.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural. Only the per-spawn schema is awkward: it travels in the task text, because the Agent tool has no schema field.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="agent-hub" data-title="Agent hub pane" data-fit="n">
+      <div class="top"><h3>Agent hub pane</h3><span class="badge">Native · M</span></div>
+      <dl><dt>In omp</dt><dd>Live roster with cost and tokens, open and steer any child.</dd>
+      <dt>Here</dt><dd>Pane over <code>$.agent.list()</code> and <code>turn.complete</code> usage; steer with <code>$.session.append({agentId})</code>.</dd></dl>
+      <p class="feel"><b>Feel:</b> natural for the roster and steering. Opening a child's full transcript inside the pane would mean drawing it yourself.</p>
+      <div class="decide"></div>
+    </article>
+    <article class="card" data-feature="cow-isolation" data-title="Copy-on-write workspaces" data-fit="w">
+      <div class="top"><h3>Copy-on-write workspaces</h3><span class="badge">Workaround · M</span></div>
+      <dl><dt>In omp</dt><dd>APFS/btrfs clone per child, auto-merged as a patch or a branch.</dd>
+      <dt>Here</dt><dd><code>cp -c</code> clone via <code>$.process</code>, <code>$.agent.spawn({cwd})</code>, then <code>git diff</code> and apply at <code>turn.complete</code>.</dd></dl>
+      <p class="feel"><b>Feel:</b> hacky next to Claude Code's built-in worktrees. Worth it only if worktrees are too slow for your repos.</p>
+      <div class="decide"></div>
+    </article>
+  </div>
+</section>
+
+<!-- ============ NATIVE ALREADY ============ -->
+<section id="native">
+  <div class="two">
+    <div style="display:grid;gap:10px">
+      <span class="eyebrow">Skip</span>
+      <h2>Already in Claude Code</h2>
+      <p>Rebuilding these would duplicate what's there:</p>
+      <ul class="plain">
+        <li>Subagents with their own model, tools and prompt (agent files, and <code>$.agent.register</code> for roles).</li>
+        <li>Steering: messages typed during a turn are delivered into it.</li>
+        <li>Rewind to an earlier point, and <code>/compact</code> with instructions.</li>
+        <li>Skills, MCP servers, plan mode, background shells, worktrees.</li>
+        <li>Dynamic workflows (multi-agent scripts), which cover much of omp's <code>workpool</code> use outside a kernel.</li>
+      </ul>
+    </div>
+    <div style="display:grid;gap:10px">
+      <span class="eyebrow">Hard limits</span>
+      <h2>What a mod can't do</h2>
+      <ul class="plain">
+        <li>Change the session client's provider or base URL. Hence route A or a gateway.</li>
+        <li>Read tool input schemas at runtime. Route A has to ship them.</li>
+        <li>Stream with <code>$.http.fetch</code>. Streaming needs a spawned <code>curl</code>.</li>
+        <li>Talk to a child process over stdin across calls, or keep one alive through a hot reload.</li>
+        <li>Take back streamed text, or inject into a retried request.</li>
+        <li>Edit past rows except through a compaction answer, or compact mid-turn.</li>
+        <li>Run its own code for more than 10 seconds per dispatch. Waiting inside <code>$</code> calls is free.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SPIKES ============ -->
+<section id="spikes">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">Before building</span>
+    <h2>Open questions, each settled by one test</h2>
+    <p>Each one is a single mod written as a test file run with <code>claude plugin test</code>, or a single curl call. Together they decide eight of the verdicts above.</p>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Question</th><th>How to settle it</th><th>Decides</th></tr></thead>
+      <tbody>
+        <tr><td>Does Claude Code work end to end through <code>omp auth-gateway</code>? (Its docs list a <code>/v1/messages</code> route, so the format is covered.)</td><td>Run broker and gateway locally, point <code>ANTHROPIC_BASE_URL</code> at them, run one <code>claude -p</code> with a non-Claude model</td><td>Route B</td></tr>
+        <tr><td>Does Claude Code accept a non-Claude model name behind a custom base URL, and which auth header does it send?</td><td>Same run, with the router logging the request</td><td>Router naming, Claude passthrough</td></tr>
+        <tr><td>Does a history mixing Claude thinking blocks and another vendor's reasoning survive a model switch both ways?</td><td>Prewalk from Claude to <code>gpt-5.6-luna</code> and back in one session</td><td>Prewalk across vendors</td></tr>
+        <tr><td>Can a plugin tool result include an image?</td><td>A test tool returning an image block</td><td>snapcompact, eval <code>display()</code></td></tr>
+        <tr><td>Does a subagent from <code>$.agent.spawn</code> pass through the same plugin's <code>turn.step</code>?</td><td>Spawn one and log <code>e.agentId</code> in the hook</td><td>Other-vendor subagents, prewalk in subagents</td></tr>
+        <tr><td>Can a <code>turn.step</code> hook stop reading <code>next</code> mid-stream and yield its own tool call?</td><td>Test with a regex on the word "TODO"</td><td>TTSR stream rules</td></tr>
+        <tr><td>Is <code>$.session.compact</code> allowed from a <code>turn.complete</code> hook?</td><td>Call it there and check the result</td><td>Notes rollover</td></tr>
+        <tr><td>Can a Claude Code subagent spawn its own subagents?</td><td>Give a test agent the Agent tool and ask it to delegate</td><td>Nesting row in the subagent table</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ WAVES ============ -->
+<section id="plan">
+  <div class="col" style="display:grid;gap:10px">
+    <span class="eyebrow">Proposal</span>
+    <h2>Order of work</h2>
+    <p>Small mods, not one big one. A <code>roles</code> mod adds a <code>$.roles</code> noun to <code>$</code> (published as a typed contract), and the others list it as a dependency. Each mod reloads on its own while being built.</p>
+  </div>
+  <div class="waves">
+    <div class="wave"><span class="eyebrow">Wave 0</span><h3>Tests</h3><p class="muted">The eight open questions. Their answers change the verdicts before any real code is written.</p></div>
+    <div class="wave"><span class="eyebrow">Wave 1</span><h3>Natural fits</h3><p class="muted">Roles + gateway (if the test passes), commands and the control pane, prewalk, advisors, JEV decisions, TTSR tool and question rules, shake · handoff · soft · idle.</p></div>
+    <div class="wave"><span class="eyebrow">Wave 2</span><h3>Workarounds worth it</h3><p class="muted">Eval kernel + PTC, structured subagent results, agent hub pane, TTSR stream rules, notes rollover, hashline edit.</p></div>
+    <div class="wave"><span class="eyebrow">Wave 3</span><h3>Only if the gateway falls short</h3><p class="muted">Own vendor client on <code>turn.step</code> (route A).</p></div>
+  </div>
+</section>
+
+</div>
+
+
+</body></html>

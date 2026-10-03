@@ -1,0 +1,5 @@
+{
+  "name": "cm-panel",
+  "version": "0.1.0",
+  "description": "/cm: every cm-* setting in one pane (or `/cm set <key> <value>`), on top of the /config rows each mod already has."
+}

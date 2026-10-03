@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# omc-decision and the two mods that use it for harness decisions, omc-effort and omc-resume.
+# cm-decision and the two mods that use it for harness decisions, cm-effort and cm-resume.
 source "$(dirname "$0")/lib.sh"
 T=$(mktemp -d)
-D=(--plugin-dir "$PLUGINS/omc-decision" --plugin-dir "$PLUGINS/omc-effort" --plugin-dir "$PLUGINS/omc-resume")
+D=(--plugin-dir "$PLUGINS/cm-decision" --plugin-dir "$PLUGINS/cm-effort" --plugin-dir "$PLUGINS/cm-resume")
 
 claude_run "$T/ask.jsonl" "/decision ask Is this operation irreversible? -- DROP TABLE users; in production" "${D[@]}"
 expect "/decision ask answers a yes/no question" "$T/ask.jsonl" 'noul\\":(0\.[5-9]|1)'
