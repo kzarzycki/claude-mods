@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Run every e2e check (or the ones named: `e2e/run.sh eval ttsr`). Costs real model calls.
+cd "$(dirname "$0")"
+failed=0
+for name in ${@:-jev eval ttsr compact hub panel}; do
+  echo "== $name"
+  bash "./$name.sh" || failed=$((failed + 1))
+done
+echo "== $failed check file(s) failed"
+exit $failed

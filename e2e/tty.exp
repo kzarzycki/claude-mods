@@ -1,0 +1,30 @@
+# Drive one interactive claude session: expect tty.exp <wait-seconds> <command>... -- <claude args>...
+# Each command is typed into the prompt and given <wait-seconds> to finish. Used where headless
+# `claude -p` behaves differently (plugin settings rows exist only in an interactive session).
+set wait [lindex $argv 0]
+set rest [lrange $argv 1 end]
+set sep [lsearch -exact $rest "--"]
+set cmds [lrange $rest 0 [expr {$sep - 1}]]
+set args [lrange $rest [expr {$sep + 1}] end]
+set timeout [expr {$wait * ([llength $cmds] + 2) + 30}]
+# The session is echoed to stdout; the caller keeps it.
+log_user 1
+match_max 1000000
+spawn -noecho claude {*}$args
+# Reading (not sleeping) is what writes the log.
+proc pause {secs} {
+  global spawn_id
+  set until [expr {[clock seconds] + $secs}]
+  while {[clock seconds] < $until} { expect -timeout 1 -re {.+} {} eof { return } timeout {} }
+}
+pause 6
+foreach c $cmds {
+  send -- $c
+  pause 1
+  send "\r"
+  pause $wait
+}
+send "\x03"
+pause 1
+send "\x03"
+expect -timeout 10 eof

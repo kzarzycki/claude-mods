@@ -1,0 +1,39 @@
+{
+  "name": "oh-my-claude",
+  "owner": {
+    "name": "zarz"
+  },
+  "description": "oh-my-pi harness features rebuilt as independent Claude Code mods.",
+  "plugins": [
+    {
+      "name": "omc-jev",
+      "source": "./plugins/omc-jev",
+      "description": "Typed harness decisions ($.jev): Jev when a key is set, a small Claude model otherwise. Picks effort per prompt and resumes turns that stop mid-promise."
+    },
+    {
+      "name": "omc-ttsr",
+      "source": "./plugins/omc-ttsr",
+      "description": "oh-my-pi TTSR rules: a regex rule denies the tool call that would break it, with the rule as the reason; a question rule is judged after each turn."
+    },
+    {
+      "name": "omc-compact",
+      "source": "./plugins/omc-compact",
+      "description": "oh-my-pi compaction methods: shake (move old tool output to files, no model call) and handoff (continue from a handoff document). Use `/compact shake` or `/compact handoff [focus]`."
+    },
+    {
+      "name": "omc-hub",
+      "source": "./plugins/omc-hub",
+      "description": "Agent hub: a pane listing this session's subagents with status, model, turns and tokens, and a box to steer a running one."
+    },
+    {
+      "name": "omc-eval",
+      "source": "./plugins/omc-eval",
+      "description": "A persistent JavaScript kernel the model drives with one `eval` tool: state survives between cells, and cells call Claude Code tools, models and subagents."
+    },
+    {
+      "name": "omc-panel",
+      "source": "./plugins/omc-panel",
+      "description": "/omc: every omc-* setting in one pane (or `/omc set <key> <value>`), on top of the /config rows each mod already has."
+    }
+  ]
+}
