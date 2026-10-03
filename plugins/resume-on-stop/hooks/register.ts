@@ -8,10 +8,10 @@ type Question = Parameters<EngineInterface["decision"]["ask"]>[0]["questions"][s
 
 export const UNEXPECTED_STOP: Question = {
   type: "noul",
-  instructions: "Classify whether this assistant message is an unexpected stop: it says it will act, continue working, or call a tool, then ends without doing so.",
+  instructions: "Classify whether this assistant message is an unexpected stop: it says it will act, continue working, or call a tool, then ends without doing so. A message that ends by asking the user to decide or answer is waiting for them, not an unexpected stop.",
   criteria: {
-    true: 'Unexpected stops:\n- "I should do the same for the JS eval worker. Doing that now."\n- "Let me run the tests next."\n- "I\'ll fix that now."\n- "Should I do that for you?"',
-    false: 'Not an unexpected stop:\n- "I\'ve completed the task."\n- "Is there anything else I can help with?"\n- "The fix is done and tests pass."',
+    true: 'Unexpected stops:\n- "I should do the same for the JS eval worker. Doing that now."\n- "Let me run the tests next."\n- "I\'ll fix that now."',
+    false: 'Not an unexpected stop:\n- "I\'ve completed the task."\n- "Is there anything else I can help with?"\n- "The fix is done and tests pass."\n- "Should I go ahead with option A or B?" (a question that waits for the user\'s answer)',
   },
 };
 const RESUME_TEXT = "You ended the turn right after saying you would act. Carry on with what you said you would do.";
