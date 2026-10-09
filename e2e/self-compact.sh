@@ -19,4 +19,17 @@ claude_run "$T/both.jsonl" "Reply with exactly this and nothing else: All done, 
 expect_not "resume-on-stop leaves the nudge's reply alone" "$T/both.jsonl" 'stopped mid-promise'
 n=$(grep -c '"subtype":"compact_boundary"' "$T/both.jsonl")
 if [ "$n" = 1 ]; then pass "it compacts once alongside resume-on-stop"; else fail "$n compactions in $T/both.jsonl"; fi
+# Without decision-model (the settings' plugin dirs narrowed to self-compact alone), a prompt above
+# the threshold carries the fill level and no nudge turn runs. With it, the prompt carries nothing.
+transcript_has() { grep -c "Context is [0-9]*% full. When you finish" "$(transcript "$1")"; }
+alone="{\"env\":{\"CLAUDE_CODE_PLUGIN_DIRS\":\"$PLUGINS/self-compact\"},\"pluginConfigs\":{\"self-compact@inline\":{\"options\":{\"threshold\":1}}}}"
+SID=$(uuidgen | tr 'A-Z' 'a-z')
+claude_run "$T/alone1.jsonl" "What does a mutex do? One sentence." --settings "$alone" --session-id "$SID"
+claude_run "$T/alone2.jsonl" "And a semaphore? One sentence." --settings "$alone" --resume "$SID"
+if [ "$(transcript_has "$SID")" -ge 1 ]; then pass "without decision-model the prompt carries the fill level"; else fail "no hint in $(transcript "$SID")"; fi
+expect_not "without decision-model no nudge turn runs" "$T/alone2.jsonl" 'asking the model whether to compact'
+SID2=$(uuidgen | tr 'A-Z' 'a-z')
+claude_run "$T/with1.jsonl" "What does a mutex do? One sentence." "${S[@]}" --plugin-dir "$PLUGINS/decision-model" --session-id "$SID2"
+claude_run "$T/with2.jsonl" "And a semaphore? One sentence." "${S[@]}" --plugin-dir "$PLUGINS/decision-model" --resume "$SID2"
+if [ "$(transcript_has "$SID2")" = 0 ]; then pass "with decision-model the prompt carries no hint"; else fail "hint found in $(transcript "$SID2")"; fi
 finish

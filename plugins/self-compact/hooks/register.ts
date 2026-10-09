@@ -1,7 +1,10 @@
 import type { EngineInterface, Register } from "claude-code";
 
 // self-compact: compaction at the end of a finished task rather than when the context overflows.
-// The model decides whether and what to keep; this mod decides when to ask it. A mod can't compact
+// The model decides whether and what to keep; this mod decides when to ask it. With decision-model,
+// a turn it judges a finished task (above the threshold) gets a short follow-up turn asking the
+// model whether to compact. Without it, each prompt above the threshold carries a hidden line with
+// the fill level instead, which costs no extra turns. A mod can't compact
 // inside a tool call or a prompt.submit (the host refuses), so everything happens at turn.complete:
 // the compact_after_turn tool only records the request, and the compaction runs as `/compact`
 // once the turn ends (`$.command.run` works headless too, unlike `$.session.compact`).
@@ -17,23 +20,28 @@ const FINISHED_TASK = {
     "Classify whether this assistant message ends a self-contained task: the work it was doing is done or reported, and it does not announce further steps it is about to take or ask the user to decide something.",
 } as const;
 
-// Without a decision model, re-nudge only after this much growth or this many turns since the last nudge.
-const REARM_POINTS = 10;
-const REARM_TURNS = 5;
-
 type Ask = { decision: { ask: (r: object) => Promise<{ answers: Record<string, { type: string; noul?: number }> }> } };
 
-/** Whether this turn looks like a finished task: the decision model when installed, else unknown. */
-async function looksFinished($: EngineInterface, answer: string): Promise<boolean | undefined> {
+/** Whether this turn looks like a finished task, by the decision model. */
+async function looksFinished($: EngineInterface, answer: string): Promise<boolean> {
   try {
     const r = await ($ as unknown as Ask).decision.ask({ purpose: "self-compact", state: answer.slice(-2000), questions: { done: FINISHED_TASK } });
     const a = r.answers.done;
     return a?.type === "noul" && (a.noul ?? 0) >= 0.5;
-  } catch (err) {
-    // decision-model is optional: without it $.decision is missing and the threshold rule decides.
-    if (err instanceof TypeError && /decision/.test(err.message)) return undefined;
+  } catch {
     return false;
   }
+}
+
+/**
+ * How full the context is, in percent of the window auto-compaction measures against. That window
+ * can be much smaller than the model's (CLAUDE_CODE_AUTO_COMPACT_WINDOW), and `context.percent`
+ * is of the model's, so a threshold on it could sit past the point where auto-compaction fires.
+ */
+async function fill($: EngineInterface): Promise<number> {
+  const { context } = await $.session.usage({ breakdown: "summary" });
+  const b = context.breakdown;
+  return b && b.rawMaxTokens > 0 ? (100 * b.totalTokens) / b.rawMaxTokens : (context.percent ?? 0);
 }
 
 async function compact($: EngineInterface, method: string, focus: string) {
@@ -51,12 +59,13 @@ export const register: Register = (on, options) => {
 
   let requested: string | undefined; // the model's focus, once it called the tool this turn
   let nudgePending = false; // the next main turn answers our nudge
-  let last: { percent: number; turn: number } | undefined; // the last nudge
+  let hasDecision = false; // whether decision-model is loaded, checked at session start
   let turns = 0;
   let compactedAt = -2; // the turn the last compaction was queued at
   let generation = 0; // bumped by every prompt; an idle timer fires only if nothing came since
 
   on("session.start", async ($, e, next) => {
+    hasDecision = await ($ as unknown as Ask).decision.ask({ purpose: "self-compact", state: "", questions: {} }).then(() => true, () => false);
     await $.tool.register({
       name: TOOL,
       description: DESCRIPTION,
@@ -73,9 +82,16 @@ export const register: Register = (on, options) => {
     return { result: "Compaction will run when this turn ends." };
   });
 
+  // Without a decision model: a person's prompt above the threshold carries the fill level, so the
+  // model can compact on its own after the task it starts. Attached to the prompt rather than the
+  // system prompt, which would break the prompt cache each time the figure changed.
   on("prompt.submit", async ($, e, next) => {
     generation++;
-    return next(e);
+    if (!nudge || hasDecision || e.origin.kind === "plugin") return next(e);
+    const percent = await fill($);
+    if (percent < threshold) return next(e);
+    const line = `Context is ${Math.round(percent)}% full. When you finish the task this prompt starts, if the next task won't need its details, call the ${TOOL} tool with a focus saying what to keep.`;
+    return next({ ...e, context: [...(e.context ?? []), line] });
   });
 
   on("turn.complete", async ($, e, next) => {
@@ -84,7 +100,7 @@ export const register: Register = (on, options) => {
     turns++;
     const answered = nudgePending;
     nudgePending = false;
-    const percent = (await $.session.usage()).context.percent ?? 0;
+    const percent = await fill($);
 
     if (requested !== undefined) {
       const focus = requested;
@@ -103,16 +119,12 @@ export const register: Register = (on, options) => {
       void (async () => {
         await $.clock.sleep(idleSeconds * 1000);
         if (generation !== idle || (await $.prompt.read()).text.trim()) return;
-        if (((await $.session.usage()).context.percent ?? 0) >= threshold) await compact($, method, "");
+        if ((await fill($)) >= threshold) await compact($, method, "");
       })().catch(() => {});
     }
 
-    if (!nudge) return done;
-    const finished = await looksFinished($, e.answer);
-    // ponytail: without a decision model, a fill-only rule rearmed by growth or turns. Upgrade path: none needed if decision-model is installed.
-    const rearmed = !last || percent >= last.percent + REARM_POINTS || turns - last.turn >= REARM_TURNS;
-    if (finished === false || (finished === undefined && !rearmed) || (finished && last && turns - last.turn < 2)) return done;
-    last = { percent, turn: turns };
+    if (!nudge || !hasDecision) return done;
+    if (!(await looksFinished($, e.answer))) return done;
     nudgePending = true;
     $.ui.toast("self-compact: asking the model whether to compact");
     void $.prompt

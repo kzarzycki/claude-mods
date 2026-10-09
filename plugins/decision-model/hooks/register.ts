@@ -19,7 +19,8 @@ async function apiKey($: EngineInterface, cfg: Cfg): Promise<string | undefined>
 }
 
 async function decide($: EngineInterface, cfg: Cfg, request: DecisionRequest): Promise<DecisionResult> {
-  if (Object.keys(request.questions).length === 0) throw new Error("decision: a request needs at least one question");
+  // An empty request answers nothing, without a call: a cheap way for a mod to check $.decision is here.
+  if (Object.keys(request.questions).length === 0) return { backend: "none", model: "none", answers: {} };
   const key = cfg.backend === "claude" ? undefined : await apiKey($, cfg);
   if (cfg.backend === "system-one" && !key) throw new Error("decision: backend is system-one but no API key is set (decision-model.apiKey, OPENROUTER_API_KEY or TYPESAFE_API_KEY)");
   if (key) {
@@ -76,6 +77,7 @@ export const register: Register = (on, options) => {
     const purpose = e.purpose ?? "?";
     try {
       const r = await decide($, cfg, e);
+      if (r.backend === "none") return { value: r };
       note(`${purpose}: ${brief(r)} (${r.backend}/${r.model})`);
       return { value: r };
     } catch (err) {

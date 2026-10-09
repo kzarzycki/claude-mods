@@ -1,12 +1,37 @@
 {
   "name": "self-compact",
   "version": "0.1.0",
-  "description": "Compaction at task boundaries: the model can ask to compact once its turn ends, and after a turn that looks like a finished task in a full context it is asked whether to. Uses decision-model to spot finished tasks when it is installed.",
+  "description": "Compaction at task boundaries: the model can ask to compact once its turn ends. Above a fill threshold it is asked whether to, after a turn decision-model judges a finished task, or, without decision-model, with each prompt.",
   "userConfig": {
-    "threshold": { "type": "number", "title": "Nudge threshold", "description": "Context fill, in percent, above which the model is asked whether to compact after a finished task", "default": 60 },
-    "toolFloor": { "type": "number", "title": "Tool floor", "description": "Context fill, in percent, below which the model's own compact_after_turn call is ignored", "default": 20 },
-    "nudge": { "type": "boolean", "title": "Nudge", "description": "Ask the model whether to compact after a turn that looks like a finished task", "default": true },
-    "method": { "type": "string", "title": "Compaction method", "description": "native, or handoff / shake when compact-methods is installed", "default": "native" },
-    "idleSeconds": { "type": "number", "title": "Idle compaction", "description": "Compact after this many idle seconds above the threshold; 0 turns it off", "default": 0 }
+    "threshold": {
+      "type": "number",
+      "title": "Nudge threshold",
+      "description": "Context fill, in percent, above which the model is asked whether to compact after a finished task",
+      "default": 60
+    },
+    "toolFloor": {
+      "type": "number",
+      "title": "Tool floor",
+      "description": "Context fill, in percent, below which the model's own compact_after_turn call is ignored",
+      "default": 20
+    },
+    "nudge": {
+      "type": "boolean",
+      "title": "Nudge",
+      "description": "Ask the model whether to compact: after a turn decision-model judges a finished task, or, without decision-model, with each prompt above the threshold",
+      "default": true
+    },
+    "method": {
+      "type": "string",
+      "title": "Compaction method",
+      "description": "native, or handoff / shake when compact-methods is installed",
+      "default": "native"
+    },
+    "idleSeconds": {
+      "type": "number",
+      "title": "Idle compaction",
+      "description": "Compact after this many idle seconds above the threshold; 0 turns it off",
+      "default": 0
+    }
   }
 }

@@ -36,7 +36,7 @@ export const register: Register = (on, options) => {
     // A prompt a plugin queued (a resume, a continuation) keeps the effort already chosen.
     if (e.origin?.kind === "plugin" || !e.text.trim() || e.text.trimStart().startsWith("/")) return next(e);
     try {
-      const r = await $.decision.ask({ purpose: "effort", state: e.text, questions: { effort: effortQuestion(ceiling) } });
+      const r = await $.decision.ask({ purpose: "effort", state: e.text.slice(0, 8000), questions: { effort: effortQuestion(ceiling) } });
       const a = r.answers.effort;
       if (a?.type === "choice") pending = a.choice as Effort;
     } catch {

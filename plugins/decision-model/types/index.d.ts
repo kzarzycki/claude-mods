@@ -24,7 +24,7 @@ export type DecisionRequest = {
 };
 export type DecisionResult = {
   /** "system-one" (an endpoint speaking the protocol) or "claude" (the text judge). */
-  backend: "system-one" | "claude";
+  backend: "system-one" | "claude" | "none"; // "none": an empty request, answered without a call
   model: string;
   answers: Record<string, DecisionAnswer>;
 };
