@@ -13,6 +13,7 @@ The first set rebuilds features of [oh-my-pi](https://github.com/can1357/oh-my-p
 | `resume-on-stop` | Unexpected stops: a turn that ends on "Let me run the tests next." without acting is spotted by the decision model and gets one resume turn. |
 | `ttsr-rules` | omp's TTSR rule files (`condition`, `scope`, `globs`, `question`) from `~/.omp/agent/rules`, `.omp/rules`, `~/.claude/ttsr`, `.claude/ttsr`. A `condition` rule denies the tool call that would break it and hands the model the rule as the reason. A `question` rule is put to the decision model after each turn; a yes leaves the rule for the model's next turn. `/ttsr`, `/ttsr reload`. |
 | `compact-methods` | Two of omp's compaction methods. `/compact shake` moves old tool output to files under `~/.claude/compact-methods/<session>/` and leaves a pointer the model can Read (no model call). `/compact handoff [focus]` replaces the context with a handoff document written by a fork of the main thread. `autoMethod` picks what runs when the context fills. |
+| `self-compact` | Compaction at task boundaries rather than at overflow. The model can call `compact_after_turn` (with a `focus` for what to keep) and the compaction runs as `/compact` once its turn ends. After a turn that looks like a finished task in a context above `threshold` (60%), it asks the model whether to compact. `decision-model`, when installed, spots finished tasks; without it the ask is rate-limited by growth and turn count. Optional idle compaction (`idleSeconds`). |
 | `agent-hub` | `/hub` pane: this session's subagents with status, model, turns, tokens and their latest answer, plus a box that sends a message to a running one. `/hub list`, `/hub send <id> <message>`. |
 | `eval-kernel` | One `eval` tool backed by a long-lived Bun kernel. State persists between cells (top-level declarations, imports). Cells call Claude Code tools (`await tool.Read({ file_path })`), models (`completion()`), subagents (`agent()`, with a JSON Schema `schema` for a parsed answer) and the decision model (`judge()`, when `decision-model` is loaded), in parallel with `Promise.all`. A subagent's completion notice goes to the cell, not the conversation. Interrupting a cell resets the kernel. Every call goes back through Claude Code, so permissions and other mods' hooks still apply. `/eval <code>`, `/eval vars`, `/eval reset`. |
 
@@ -28,6 +29,7 @@ claude plugin install auto-effort@claude-mods     # pulls in decision-model
 claude plugin install resume-on-stop@claude-mods
 claude plugin install ttsr-rules@claude-mods
 claude plugin install compact-methods@claude-mods
+claude plugin install self-compact@claude-mods
 claude plugin install agent-hub@claude-mods
 claude plugin install eval-kernel@claude-mods
 ```
@@ -62,7 +64,7 @@ Options of mods loaded this way are under `<name>@inline` (in `/config`, or `cla
 ## Checks
 
 - `scripts/check.sh`: validate, unit-test (`claude plugin test`) and type-check every mod, plus the kernel's self-check. No model calls, under ten seconds.
-- `e2e/run.sh [decision eval ttsr compact hub]`: real `claude` sessions with the mods loaded, asserting on output and on files the mods write. They make real model calls; the whole run takes about four minutes. `hub` and the question-rule check drive an interactive session through `expect`, because headless `claude -p` differs there (see below).
+- `e2e/run.sh [decision eval ttsr compact hub self-compact]`: real `claude` sessions with the mods loaded, asserting on output and on files the mods write. They make real model calls; the whole run takes about four minutes. `hub` and the question-rule check drive an interactive session through `expect`, because headless `claude -p` differs there (see below).
 
 ## How the pieces work
 
@@ -82,6 +84,7 @@ Each item was observed in a run, not read from docs.
 - **Fork can fail after a resume.** `$.model.fork` has nothing to fork right after a session is resumed headless. Handoff falls back to `$.model.complete` over the messages `session.compact` passes in.
 - **A missing dependency blocks the load.** A mod whose `dependencies` aren't loaded doesn't load at all. A marketplace install pulls the dependency in (`+ 1 dependency`).
 - **Jev returns real distributions; the Claude backend can't.** Jev's `choice` answers carry probabilities (`xhigh 0.99, high 0.01`, confidence 0.98); the Claude text judge answers one-hot. Jev's `noul` can sit near the middle where a reader would say yes: "Is `DROP TABLE users;` in production irreversible?" came back 0.51, so thresholds need tuning per question.
+- **A mod compacts only between turns.** `$.session.compact` and `$.command.run("compact")` are refused inside `tool.call` and `prompt.submit` hooks ("would compact under the turn this hook is holding"), so a model can't compact mid-turn and a mod can't compact just before a new prompt runs. From `turn.complete` both work interactively; headless (`-p`) only `$.command.run("compact")` does.
 - **Child sessions don't save transcripts.** A session started from inside another Claude Code session inherits `CLAUDE_CODE_CHILD_SESSION` and stops saving transcripts; the e2e scripts unset it.
 - **Haiku subagents can miss the task.** A Haiku subagent sometimes answers its injected system context ("System initialization acknowledged…") instead of the task. The e2e checks use Sonnet for subagents.
 - **Test-kit gaps** (`claude plugin test`):

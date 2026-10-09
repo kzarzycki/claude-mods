@@ -39,6 +39,11 @@
       "name": "eval-kernel",
       "source": "./plugins/eval-kernel",
       "description": "A persistent JavaScript kernel the model drives with one `eval` tool: state survives between cells, and cells call Claude Code tools, models and subagents."
+    },
+    {
+      "name": "self-compact",
+      "source": "./plugins/self-compact",
+      "description": "Compaction at task boundaries: the model can ask to compact once its turn ends, and after a turn that looks like a finished task in a full context it is asked whether to. Uses decision-model to spot finished tasks when it is installed."
     }
   ]
 }
