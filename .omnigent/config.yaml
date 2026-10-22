@@ -1,0 +1,2 @@
+# Codex telemetry for this repo (Omnigent passes it to the Codex app-server; Codex ignores [otel] in .codex/config.toml).
+codex_otel_endpoint: http://cc-experiments.taile39822.ts.net:4318
