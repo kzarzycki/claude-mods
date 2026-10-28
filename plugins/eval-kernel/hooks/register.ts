@@ -8,14 +8,27 @@ import type { EngineInterface, Register } from "claude-code";
 const TOOL = "eval";
 const TOOL_ID = "mcp__eval-kernel__eval";
 
-const DESCRIPTION = `Run JavaScript in a persistent Bun kernel, like a notebook cell.
+const DESCRIPTION = `Call tools from code instead of one by one, so only what you print reaches the context.
 
-- Top-level \`const\`/\`let\`/\`function\`/\`class\` declarations and \`import\`s at the start of a line persist into later cells. A trailing expression is the cell's value. Top-level await works.
-- Bun, fetch and node:* modules are available. console.log and display(value) are captured.
-- Claude Code tools: \`await tool.Read({ file_path })\` resolves to the tool's text and throws if the tool errors; \`tool.call(name, args, { raw: true })\` returns { text, result, isError } for any tool, MCP tools included. \`await tools()\` lists them. Calls go through the normal permission checks.
-- Models and agents: \`await completion(prompt, { model: "haiku", system, maxTokens })\` returns text; \`await agent(prompt, { description, subagentType, model, schema })\` runs a subagent and returns its answer: the bare text, or with a JSON Schema \`schema\`, the parsed JSON value. Run several at once with Promise.all.
+Use eval when:
+- A tool may return far more than you need (a large MCP result, a long list, a big file or log): call it in a cell, filter or summarise there, and print only the part you need. The full output stays in the kernel, not in your context.
+- Calls chain: one result feeds the next call's arguments.
+- The same call runs over many items, or many different calls fan out: run them with Promise.all and print the aggregate.
+- You wait for a condition: poll a tool in a loop with a delay and a time limit, and print only the final state.
+- The tool is an MCP tool and the output needs processing: Bash can't reach MCP tools, and calling their raw APIs instead is wrong.
+
+State persists across cells and turns. Keep fetched data in a named variable, refer back to it by name, and print slices of it, instead of calling the tool again or carrying the data in your context.
+
+Call the tool directly when it is one call whose whole output you need to read.
+
+Reference:
+- A cell returns what console.log and display(value) print, then the value of its trailing expression, each cut at 50,000 characters. process.stdout writes are not returned. Top-level await works.
+- Top-level \`const\`/\`let\`/\`var\`/\`function\`/\`class\` declarations and \`import\`s at the start of a line persist into later cells. Indented and destructuring declarations stay in their cell; an indented import is a syntax error. State lasts as long as the Claude Code process, through compaction and /clear. It is lost on \`reset: true\`, \`/eval reset\`, an interrupted cell, a cell making more than 200 tool, model and agent calls, and a restart of Claude Code (\`claude --resume\` included).
+- Time limit: a cell must make its next tool, completion(), judge() or agent() call, or end, within 30 s of its start, of each tool, completion() or judge() result, and of each agent() call. A longer sleep or computation fails the eval call and leaves the cell running, so the next cell needs \`reset: true\`; a lone agent() wait that long rejects that call. A tool call itself may take longer. Poll with \`await sleep(ms)\`, under 30 s between calls.
+- Bun, fetch and node:* modules are available.
+- Tools: \`await tool.Read({ file_path })\` resolves to the tool's text and throws if the tool errors; \`tool.call(name, args, { raw: true })\` returns { text, result, isError } for any tool, MCP tools included. \`await tools()\` lists them. Calls go through the normal permission checks.
+- Models and agents: \`await completion(prompt, { model: "haiku", system, maxTokens })\` returns text; \`await agent(prompt, { description, subagentType, model, schema })\` runs a subagent and returns its answer: the bare text, or with a JSON Schema \`schema\`, the parsed JSON value.
 - Decisions: \`await judge({ type: "noul", instructions: "Is it risky?" }, state)\` asks the decision model (decision-model mod; Jev when configured) one typed question (\`noul\` yes-probability, \`choice\` with \`criteria\` {label: rubric}, \`score\` with ordered \`criteria\`) and returns its answer.
-- Use it to fan work out (read 30 files, run 5 subagents, aggregate), to keep data between steps, or to compute instead of reasoning.
 - Pass \`reset: true\` to restart the kernel with empty state.`;
 
 type Event =
