@@ -43,6 +43,15 @@ try {
   const b = await run("add(x, 2)");
   check("state survives across cells, trailing expression is the value", b.value === "42", b);
 
+  const m = await run("const out = 3;\n({\n  total: out,\n})");
+  check("a multi-line trailing object is the value", m.value?.includes("total") && m.value.includes("3"), m);
+
+  const mc = await run("[1, 2, 3]\n  .map(n => n * 2)\n  .join(',') // doubled");
+  check("a multi-line method chain with a trailing comment is the value", mc.value === "2,4,6", mc);
+
+  const blk = await run("if (true) {\n  1\n}");
+  check("a cell ending in a block has no value", blk.status === "done" && blk.value === undefined, blk);
+
   const c = await run("console.log('hi', { n: 1 })\ndisplay([1, 2])");
   check("console and display are captured", c.output.includes("hi") && c.output.includes("[\n  1,\n  2\n]"), c);
 

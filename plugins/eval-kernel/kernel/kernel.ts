@@ -147,13 +147,18 @@ const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 function compile(source: string, cwd: string): () => Promise<unknown> {
   const body = persist(rewriteImports(source, cwd));
   const lines = body.trimEnd().split("\n");
-  const last = lines[lines.length - 1]?.trim() ?? "";
-  const canReturn = last && !/^(return|const|let|var|if|for|while|function|class|try|throw|\}|\/\/)/.test(last) && !/\breturn\b/.test(body);
-  if (canReturn) {
-    try {
-      return new AsyncFunction([...lines.slice(0, -1), `return (${last.replace(/;$/, "")});`].join("\n"));
-    } catch {
-      // not an expression after all
+  // ponytail: finds the last statement by trying `return (…)` over growing tails (last 1, 2, 3…
+  // lines) and keeping the first that compiles. Upgrade path: a real parser (acorn).
+  if (!/\breturn\b/.test(body)) {
+    for (let k = 1; k <= lines.length; k++) {
+      const first = lines[lines.length - k].trim();
+      if (!first || /^(return|const|let|var|if|for|while|function|class|try|throw|\}|\/\/)/.test(first)) continue;
+      const tail = lines.slice(-k).join("\n").trimEnd().replace(/;$/, "");
+      try {
+        return new AsyncFunction([...lines.slice(0, -k), `return (${tail}\n);`].join("\n"));
+      } catch {
+        // not an expression from this line on
+      }
     }
   }
   return new AsyncFunction(body);
