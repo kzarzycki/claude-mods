@@ -55,7 +55,7 @@ export const register: Register = (on, options) => {
   const toolFloor = Number(options.toolFloor ?? 20);
   const nudge = options.nudge !== false;
   const method = String(options.method || "native");
-  const idleSeconds = Number(options.idleSeconds ?? 0);
+  const idleSeconds = Number(options.idleSeconds ?? 1800);
 
   let requested: string | undefined; // the model's focus, once it called the tool this turn
   let nudgePending = false; // the next main turn answers our nudge
@@ -112,8 +112,10 @@ export const register: Register = (on, options) => {
       }
       return done;
     }
-    if (answered || percent < threshold) return done; // a declined nudge, or not full enough
+    if (percent < threshold) return done;
 
+    // Armed after the nudge's answer too: the nudge prompt bumped `generation` and so dropped the
+    // timer armed before it, and a declined nudge is the turn most likely to precede a long idle.
     const idle = generation;
     if (idleSeconds > 0) {
       void (async () => {
@@ -123,7 +125,7 @@ export const register: Register = (on, options) => {
       })().catch(() => {});
     }
 
-    if (!nudge || !hasDecision) return done;
+    if (answered || !nudge || !hasDecision) return done; // one nudge per finished task
     if (!(await looksFinished($, e.answer))) return done;
     nudgePending = true;
     $.ui.toast("self-compact: asking the model whether to compact");
