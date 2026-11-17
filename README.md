@@ -19,7 +19,7 @@ The first set rebuilds features of [oh-my-pi](https://github.com/can1357/oh-my-p
 
 ## Install
 
-Built and tested on Claude Code 2.1.288. The mods use the in-process `$` hook API, so older versions won't load them.
+Built on Claude Code 2.1.288 and tested on 2.1.326. The mods use the in-process `$` hook API, so older versions won't load them. On 2.1.321 to 2.1.326, `claude plugin test` can't route one mod's call to another mod's noun, so the unit tests that need `$.decision` skip there and say so; `e2e/run.sh` runs them in real sessions.
 
 ### From GitHub (to use them)
 
@@ -69,7 +69,7 @@ Options of mods loaded this way are under `<name>@inline` (in `/config`, or `cla
 ## How the pieces work
 
 - **A decision model, and the places that use it.** `decision-model` owns the protocol and the backend; each place a decision is made (effort, stops, question rules) is its own mod that asks through `$.decision.ask` and names its `purpose` for the log. Swapping Jev for another model, or for Claude, changes no consumer.
-- **`$.decision` across mods.** A mod adds a noun to `$` in `engine.create`. The noun's methods are only placeholders: calling `$.decision.ask(x)` raises the event `decision.ask`, which decision-model's hook answers with a `$` of its own. A `$` captured at `engine.create` can't be used later; the validator refuses it.
+- **`$.decision` across mods.** A mod adds a noun to `$` in `engine.create`, and the noun's methods do the work: Claude Code sends every mod's `$.decision.ask(x)` to decision-model's method (the host op `interface.call`). That method reaches the host only as `beneath.<noun>.<method>(...)` on the value of `next(e)`, with each environment variable's name written out, so it hands `decide` three small functions (key, fetch, model call) built that way. `/decision` builds the same three from its own `$`.
 - **Eval kernel transport.** A mod can write to a child's stdin only once, so the kernel serves HTTP on a Unix socket instead (`$.http.fetch` with `socketPath`). A cell that needs the host parks the call and returns it as a `call` event; the mod runs it and answers with `/resume`.
 - **Subagents from a cell.** `agent()` spawns the subagent and the eval hook waits on `/next`. The subagent's hand-back (`SubagentHandback`, or its final `turn.complete`) answers the call through `/answer`. Every wait happens inside `$.http.fetch`, which doesn't count against the hook's 10-second budget. Waiting on an ordinary promise would count.
 - **Kernel lifetime.** The kernel is started from `session.start` and restarted when it exits (`/eval reset` simply exits it). It dies with the mod's module, and a parent-pid watchdog ends it if Claude Code dies.
