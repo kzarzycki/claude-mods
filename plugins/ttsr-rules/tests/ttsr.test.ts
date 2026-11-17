@@ -33,12 +33,32 @@ function ruleFolder(on: On, files: Record<string, string>) {
 const fakeDecision = {
   name: "decision-model",
   register: (on: any) => {
-    on("engine.create", async ($: unknown, e: unknown, next: (e: unknown) => Promise<object>) => ({ ...(await next(e)), decision: { ask: async () => ({}) } }));
-    on("decision.ask", ($: unknown, e: { state: unknown; questions: Record<string, unknown> }) => {
-      const noul = JSON.stringify(e.state).includes("tests pass") ? 0.9 : 0;
-      return { value: { backend: "claude", model: "fake", answers: Object.fromEntries(Object.keys(e.questions).map(id => [id, { type: "noul", noul }])) } };
+    on("command.run", { command: "decision-probe" }, async ($: any) => {
+      try { await $.decision.ask({ state: "", questions: {} }); return { text: "routed" }; } catch (err) { return { text: String(err) }; }
     });
+    on("engine.create", async ($: unknown, e: unknown, next: (e: unknown) => Promise<object>) => ({
+      ...(await next(e)),
+      decision: {
+        ask: async (e: { state: unknown; questions: Record<string, unknown> }) => {
+          const noul = JSON.stringify(e.state).includes("tests pass") ? 0.9 : 0;
+          return { backend: "claude", model: "fake", answers: Object.fromEntries(Object.keys(e.questions).map(id => [id, { type: "noul", noul }])) };
+        },
+      },
+    }));
   },
+};
+
+// `claude plugin test` on CLI 2.1.321 to 2.1.326 can't route a call on a plugin's noun (the host op
+// interface.call), and a test can't answer that op either. There a test that needs $.decision ends
+// early; e2e/run.sh decision covers it in real sessions. The stand-in's `/decision-probe` makes the
+// call, since a test's own `$` carries no plugin nouns.
+declare const console: { log: (line: string) => void };
+const routesNouns = async ($: any) => {
+  const { text } = await $.command.run({ command: "decision-probe", args: "", origin: { kind: "composer" }, presentation: { isFullscreen: false, columns: 80 } });
+  if (text === "routed") return true;
+  if (!/no implementation for interface\.call/.test(text)) throw new Error(`decision-probe: ${text}`);
+  console.log("skipped: this CLI's plugin test kit can't route $.decision (interface.call)");
+  return false;
 };
 
 test("a matching tool call is denied with the rule as the reason", { plugins: [fakeDecision] }, async ($, on) => {
@@ -63,6 +83,7 @@ test("a question rule the judge says yes to fires after the turn", { plugins: [f
   on("ui.toast", ($, e) => (toasts.push(e.text), { value: undefined }));
   on("ui.log", () => ({ value: undefined }));
   on("turn.complete", ($, e) => ({ text: e.answer }));
+  if (!(await routesNouns($))) return;
   await $.session.start({ cwd: "/repo", surface: null, isInteractive: false });
   await $.turn.complete({ turnId: "t1", answer: "I refactored the parser.", durationMs: 1, isAborted: false, reason: "answer" });
   expect(toasts).toEqual([]);
