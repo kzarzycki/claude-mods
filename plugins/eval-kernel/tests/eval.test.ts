@@ -9,7 +9,7 @@ type Ev = Record<string, unknown>;
 /** Start the session against a fake kernel whose /run and /resume replies come from `script`. */
 async function start($: any, on: On, script: (path: string, body: any) => Ev) {
   const posts: { path: string; body: any }[] = [];
-  on("session.id", () => ({ value: "abcdef123456" }));
+  on("session.id", () => ({ value: "session-one" }));
   on("tool.register", ($, e) => ({ value: { tool: `mcp__eval-kernel__${e.name}` } }));
   on("command.register", ($, e) => ({ value: { command: e.name } }));
   on("process.spawn", async function* () {

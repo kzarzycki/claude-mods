@@ -12,8 +12,8 @@ claude_run "$T/tool.jsonl" "/eval (await tool.Read({ file_path: '$ROOT/.claude-p
 expect "a cell calls a Claude Code tool" "$T/tool.jsonl" 'eval-kernel: => true'
 
 claude_run "$T/agent.jsonl" "Use the eval tool for all of this, one eval call per cell.
-Cell 1: const secret = 'kiwi-' + (6 * 7)
-Cell 2: secret
+Cell 1: const fruit = 'kiwi-' + (6 * 7)
+Cell 2: fruit
 Cell 3: await Promise.all([completion('Reply with only the word PONG', { model: 'haiku' }), agent('Reply with only the word AGENTOK. Do not use tools.', { description: 'echo', model: 'sonnet' })])
 Then reply with the three cell values." "${E[@]}" --allowedTools "mcp__eval-kernel__eval"
 expect "declarations persist across cells" "$T/agent.jsonl" '=> kiwi-42'

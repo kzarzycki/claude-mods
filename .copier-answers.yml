@@ -1,0 +1,21 @@
+# Records the answers used to generate this project.
+# Do not edit by hand — `copier update` rewrites it. Edit the template instead.
+_commit: v0.14.2
+_src_path: gh:kzarzycki/project-templates
+agent_layer_mode: compiled
+author: Krzysztof Zarzycki
+description: 'Claude Code mods: hooks, tools and panels that change how Claude Code
+    works.'
+email: kzarzycki@users.noreply.github.com
+engineering_loop: true
+github_repository: ''
+include_agent_layer: true
+include_ci: true
+include_engineering_workflow: true
+include_example: false
+include_fnox: true
+include_mise: true
+license: none
+merge_queue: false
+project_name: claude-mods
+project_type: ai/skills

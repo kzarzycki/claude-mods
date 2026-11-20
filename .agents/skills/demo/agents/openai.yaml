@@ -1,0 +1,4 @@
+interface:
+  display_name: "Demo"
+  short_description: "Record a visible change running and post the video to its PR"
+  default_prompt: "Use $demo to record this PR's visible change at its head and post the video to the PR."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Engineering loop"
+  short_description: "Every PR: spec, build, gates, proof, an independent verifier, autonomous landing"
+  default_prompt: "Use $engineering-loop for this change: a spec the owner reads, one PR, gates and proof, a fresh verifier, of the other model family where one is available, triage findings by path and cost, passes up to the cap, then land."

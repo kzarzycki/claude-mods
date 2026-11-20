@@ -1,0 +1,1069 @@
+#!/usr/bin/env python3
+"""Clear what rebuilds itself on this account; ask the chief of staff about the rest and warn it if the disk stays low.
+
+    agent-hygiene              clean, log, warn under the floor
+    agent-hygiene --dry-run    report what would go, remove nothing
+    agent-hygiene --hold-asks  print each question as an ASK: line instead of telling the chief of staff
+
+The agent-hygiene skill's script (its SKILL.md is the full account), from the engineering pack the account's dotagents
+checkout pins; `dotagents install` links ~/.local/bin/agent-hygiene to it. Run by an Omnigent scheduled task on each
+dev account. Its history before the move: kzarzycki/dotagents, `git log -- home/.local/bin/disk-hygiene`.
+Steps, each skipped when in use:
+  worktrees     linked worktrees under ~/dev whose branch has a merged PR (or, detached, whose HEAD is the head of a merged or closed PR), and those with no PR of their own
+                inside one, judged with its PR, innermost first: removed with
+                `git worktree remove` when clean (untracked *.lock files aside, also in an untracked dir), pushed (or in the PR head), unlocked, no process is in
+                them, their tmp/ and .bootstrap-state/ (run reports) are a day old and every ignored file in them
+                is an environment, an empty directory, `.apm-local/`, build output (CACHEDIR.TAG, XcodeGen's .xcodeproj, a file marked generated), a log, test output, a built static/web-ui, a copy of the main checkout's file, a run report or what
+                apm.lock.yaml says `apm install` deployed
+  environments  .venv / node_modules beside their manifest, in a checkout under ~/dev that
+                no process uses and nothing changed in for --idle-days
+  terminals     Omnigent session terminals whose session is gone (kzarzycki/omnigent#230): this user's ppid-1
+                `omnigent/terminals/program_status.py` wrappers whose --bridge-dir no longer exists get SIGTERM, then SIGKILL
+                (the wrapper ignores SIGTERM) on their process group; launchd reaps the zombies. Logs ptys and zombies before
+                and after, and warns above 80% of the pty limit
+  caches        each tool's own command (uv, pnpm, npm, go, pre-commit, brew, and docker's
+                build cache unused for 24 h)
+
+Never touched: agent state (~/.claude, ~/.codex, ~/.omnigent), user files, simulator devices,
+VM or container images. What may be wanted is asked about instead, once, in the chief of staff's
+session: a merged worktree kept for uncommitted work, an unpushed HEAD or ignored files that may
+not rebuild; simulator devices whose runtime is gone; staged ChatGPT updates; the dotagents checkout pinning another
+pack than its origin/main (a missed release); what `dotagents doctor` reports (drift).
+The chief of staff is the session labelled omni.role=cos on the one server the CLI uses (config.yaml's `server:`, else
+RUNNER_SERVER_URL, else the CLI default); no other logged-in server is tried, and a server with none, or unreachable, fails the run.
+Log: ~/.local/state/agent-hygiene/<UTC time>.log. Exit 0 done, 2 under the floor (the chief of staff
+was told), 1 a step, the process scan or the message failed. Without a process scan nothing is removed.
+"""
+import argparse
+import filecmp
+import getpass
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+HOME = Path.home()
+STATE = HOME / '.local/state/agent-hygiene'
+OLD_STATE = HOME / '.local/state/disk-hygiene'  # before the rename: moved once, so nothing already asked is asked again
+OMNIGENT_PYTHON = HOME / '.local/share/uv/tools/omnigent/bin/python'
+REPO = HOME / '.dotagents'  # the account's dotagents checkout, whose pinned pack holds this script
+INSTALL_FAILED = STATE / 'install-failed'  # what the last failed install said, until one succeeds
+LOCK = 'apm.lock.yaml'  # its pin of that pack
+DOTAGENTS = REPO / 'bin/dotagents'  # its doctor reports what agents' skills need and lack
+GB = 1e9
+WARN_EVERY = 20 * 3600  # one warning per account per day while the disk stays low
+ASK_MAX = 30  # lines per message; the rest are in the log and asked next run
+# (name, command, timeout, a running process of the tool means its cache is in use)
+CACHES = [
+    ('uv', ['uv', 'cache', 'prune'], 120, None),  # uv waits on its own cache lock instead
+    ('pnpm', ['pnpm', 'store', 'prune'], 600, r'(^|/)pnpm(\.c?js)?( |$)'),
+    ('npm', ['npm', 'cache', 'clean', '--force'], 300, r'(^|/)npm(-cli\.js)?( |$)'),
+    ('go', ['go', 'clean', '-cache'], 300, r'(^|/)go( |$)'),
+    ('pre-commit', ['pre-commit', 'gc'], 300, r'(^|/)pre-commit( |$)'),
+    ('brew', ['brew', 'cleanup', '--prune=all', '-s'], 600, r'(^|/)brew(\.rb)?( |$)'),
+    # Only build cache no build used for a day: images, containers and volumes stay.
+    ('docker', ['docker', 'builder', 'prune', '-f', '--filter', 'until=24h'], 600, None),
+]
+MANIFESTS = {'.venv': ('pyproject.toml', 'uv.lock', 'requirements.txt', 'setup.py'),
+             'node_modules': ('package.json',)}
+PRUNE = {'.git', *MANIFESTS}  # never walked into
+# Staged ChatGPT/Codex updates: macOS App Management refuses their deletion from a shell.
+SPARKLE = HOME / 'Library/Caches/com.openai.codex/org.sparkle-project.Sparkle/Installation'
+
+
+class Run:
+    def __init__(self, dry, log):
+        self.dry, self.log, self.failed = dry, log, False
+
+    def say(self, line):
+        print(line, flush=True)
+        with self.log.open('a') as out:
+            out.write(line + '\n')
+
+
+def free():
+    return shutil.disk_usage(HOME).free
+
+
+def sh(args, timeout=120, cwd=None):
+    """stdout of a command, or None when it fails or times out."""
+    try:
+        done = subprocess.run(args, cwd=cwd, text=True, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def processes():
+    """Paths open in any process (cwds included) and every command line, read once per run;
+    None when either listing fails, since nothing may be removed without it."""
+    files, commands = sh(['lsof', '-w', '-n', '-P', '-Fn'], 300), sh(['ps', '-axww', '-o', 'command='])
+    if files is None or commands is None:
+        return None
+    return {line[1:] for line in files.splitlines() if line.startswith('n/')}, commands.splitlines()
+
+
+# An Omnigent terminal wrapper: python, its flags, then the script as the first argument (a tmux server only names it later).
+WRAPPER = re.compile(r'^\S*python[\d.]*\s+(-\S+\s+)*\S*omnigent/terminals/program_status\.py\s', re.I)
+# A plain, unescaped bridge dir ending .../claude-native/<id>; any other spelling (a space, a quote, a JSON escape) cannot be
+# read unambiguously from a flattened command line, so it does not parse and the wrapper is kept.
+BRIDGE_DIR = re.compile(r'--bridge-dir[\s"\',=]+((?:/[\w.-]+)+/(?:claude|codex)-native/[0-9a-f]+)(?=["\',\s\]}]|$)')
+GRACE = 3  # seconds between SIGTERM and SIGKILL
+ZOMBIES_HIGH = 20
+
+
+def in_use(path, procs):
+    """Why path is in use (a process has it open or as cwd, or names it), else None."""
+    opened, commands = procs
+    prefix = str(path) + '/'
+    if any(p == str(path) or p.startswith(prefix) for p in opened):
+        return 'a process has it open'
+    if any(str(path) in c for c in commands):
+        return 'a process names it'
+    return None
+
+
+def pty_state():
+    """(ptys in use, the machine's pty limit or None)."""
+    if Path('/dev/pts').is_dir():
+        used = sum(p.name.isdigit() for p in Path('/dev/pts').iterdir())
+        limit = sh(['cat', '/proc/sys/kernel/pty/max'])
+    else:
+        used = len(list(Path('/dev').glob('ttys*')))
+        limit = sh(['sysctl', '-n', 'kern.tty.ptmx_max'])
+    return used, int(limit) if limit and limit.strip().isdigit() else None
+
+
+def listing():
+    """[(pid, ppid, uid, pgid, is zombie, command)] of every process; None when ps fails."""
+    out = sh(['ps', '-axww', '-o', 'pid=,ppid=,uid=,pgid=,stat=,command='])
+    rows = [r for r in (line.split(None, 5) for line in (out or '').splitlines()) if len(r) > 5 and all(f.isdigit() for f in r[:4])]
+    return None if out is None else [(*map(int, r[:4]), r[4].startswith('Z'), r[5]) for r in rows]
+
+
+def dead_terminals(run):
+    """Kill this user's orphaned Omnigent terminal wrappers whose bridge dir is gone: they hold a pty for good and
+    their pool (macOS: 511 machine-wide) runs out. Selection is exact; anything else is left alone."""
+    rows = listing()  # ponytail: its own ps call beside processes(), which lists commands only; merge them for a third user
+    if rows is None:
+        run.failed = True
+        run.say('FAIL terminals: ps failed')
+        return
+    def gone(path):
+        try:
+            os.stat(path)
+            return False
+        except FileNotFoundError:
+            return True
+        except OSError:  # unreadable is not gone
+            return False
+    dead = [r for r in rows if r[1] == 1 and r[2] == os.getuid() and WRAPPER.match(r[5])
+            and (dirs := BRIDGE_DIR.findall(r[5])) and len(dirs) == r[5].count('--bridge-dir') and all(map(gone, dirs))]
+    ptys, limit = pty_state()
+    zombies = sum(r[4] for r in rows)
+    run.say(f'terminals: {len(dead)} dead of {sum(bool(WRAPPER.match(r[5])) for r in rows)}; ptys {ptys}/{limit or "?"}, {zombies} zombies')
+    for pid, _, _, pgid, _, command in dead:
+        run.say(f'{"would kill" if run.dry else "kill"} dead terminal {pid}: {BRIDGE_DIR.findall(command)[0]}')
+    if dead and not run.dry:
+        # the pane's wrapper leads its group (tmux makes it a session leader); a shared group is never signalled whole
+        send = lambda pid, pgid, sig: (os.killpg if pgid == pid else os.kill)(pgid if pgid == pid else pid, sig)
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            for pid, _, _, pgid, _, _ in dead:
+                try:
+                    send(pid, pgid, sig)
+                except ProcessLookupError:
+                    pass
+                except OSError as error:
+                    run.failed = True
+                    run.say(f'FAIL terminal {pid}: {error}')
+            if sig == signal.SIGTERM:
+                time.sleep(GRACE)  # ponytail: a pid reused within the grace is signalled; ps rescan per pid if it ever matters
+        time.sleep(1)  # launchd reaps the zombies
+        rows, (ptys, limit) = listing() or rows, pty_state()
+        zombies = sum(r[4] for r in rows)
+        run.say(f'terminals after: ptys {ptys}/{limit or "?"}, {zombies} zombies')
+    if zombies > ZOMBIES_HIGH:
+        run.say(f'WARN terminals: {zombies} zombies')
+    if limit and ptys > 0.8 * limit:
+        run.say(f'WARN terminals: {ptys} ptys of {limit}, another source is leaking them')
+
+
+def attempt(args, timeout):
+    """The finished command, or None when it outlasts timeout."""
+    try:
+        return subprocess.run(args, text=True, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def seconds(etime):
+    """ps's [[dd-]hh:]mm:ss elapsed time in seconds."""
+    days, _, clock = etime.rpartition('-')
+    parts = [int(p) for p in clock.split(':')]
+    return (int(days or 0) * 24 + (parts[-3] if len(parts) > 2 else 0)) * 3600 + parts[-2] * 60 + parts[-1]
+
+
+def is_uv_run(command):
+    """uv run, uv tool run or uvx: launchers that hold the lock only while the program they run lives."""
+    words = command.split()
+    rest = [w for w in words[1:] if not w.startswith('-')]
+    name = os.path.basename(words[0]) if words else ''
+    return name == 'uvx' or (name == 'uv' and (rest[:1] == ['run'] or rest[:2] == ['tool', 'run']))
+
+
+def in_cache(path, roots):
+    """Whether path, as written or with its links followed, is under any of roots (the cache dir as uv names it and resolved)."""
+    if not path.startswith(('/', '.', '~')) and '/' not in path:
+        return False
+    return any(os.path.commonpath([p, r]) == r for p in (os.path.abspath(path), os.path.realpath(path))
+               for r in {*roots, *map(os.path.realpath, roots)})
+
+
+def read_environ(pid):
+    """A process's environment as a dict, or None when it cannot be read (no permission, gone)."""
+    if Path('/proc/self/environ').exists():
+        try:
+            raw = Path(f'/proc/{pid}/environ').read_bytes().decode(errors='replace')
+        except OSError:
+            return None
+        return dict(item.partition('=')[::2] for item in raw.split('\0') if '=' in item)
+    out = sh(['ps', 'eww', '-o', 'command=', '-p', str(pid)])  # macOS: the variables follow the command
+    if out is None or not out.strip():
+        return None
+    return dict(w.partition('=')[::2] for w in out.split() if re.match(r'[A-Za-z_][A-Za-z0-9_]*=', w))
+
+
+def environment_in_cache(env, roots):
+    """The first VIRTUAL_ENV, PATH or PYTHONPATH entry of env under the cache, or None: uv run sets them
+    for the program it starts, so they show an environment in the cache that no file or argument names."""
+    for key in ('VIRTUAL_ENV', 'PATH', 'PYTHONPATH'):
+        for entry in [env.get(key, '')] if key == 'VIRTUAL_ENV' else env.get(key, '').split(':'):
+            if entry and in_cache(entry, roots):
+                return entry
+    return None
+
+
+def uv_force(run, wait):
+    """(forced prune command or None, why it was not forced) after a uv prune waited out `wait` on the cache lock.
+    Every holder must be a uv run older than the wait, none with an interpreter inside the cache, since
+    prune removes only unreferenced entries but a script's or uvx's environment lives there."""
+    cache = (sh(['uv', 'cache', 'dir']) or '').strip()
+    held = sh(['lsof', '-w', '-n', '-P', '-Fp', f'{cache}/.lock']) if cache else None
+    table = sh(['ps', '-axww', '-o', 'pid=,ppid=,etime=,command='])
+    pids = [int(l[1:]) for l in (held or '').split() if l[:1] == 'p' and l[1:].isdigit()]
+    if not pids or table is None:
+        return None, ''
+    procs = {}
+    for line in table.splitlines():
+        fields = line.split(None, 3)
+        if len(fields) == 4 and fields[0].isdigit() and fields[1].isdigit():
+            procs[int(fields[0])] = (int(fields[1]), fields[2], fields[3])
+    roots, now, seen = {cache, os.path.realpath(cache)}, time.time(), []
+    lock = {f'{r}/.lock' for r in roots}
+    for pid in pids:
+        ppid, etime, command = procs.get(pid, (0, '', ''))
+        try:
+            age = seconds(etime)
+        except (ValueError, IndexError):
+            age = -1
+        who = f'pid {pid} ({command or "unknown"})'
+        if not is_uv_run(command) or age <= wait:
+            return None, f'; the lock is held by {who}, not a uv run older than the wait'
+        family, grew = {pid}, True
+        while grew:  # the holder and the programs it started
+            grew = False
+            for child, (parent, _, _) in procs.items():
+                if parent in family and child not in family:
+                    family.add(child)
+                    grew = True
+        for member in sorted(family):
+            # every open or mapped file, not the interpreter alone: lsof reports a link's target, so a python
+            # started through a link in the cache shows no cache path, but its libraries and cwd still do
+            files = sh(['lsof', '-w', '-n', '-P', '-Fn', '-p', str(member)])
+            if files is None:
+                return None, f'; the open-file lookup for pid {member} of {who} failed'
+            inside = [l[1:] for l in files.splitlines() if l[:1] == 'n' and l[1:] not in lock
+                      and in_cache(l[1:], roots)]
+            if inside:
+                return None, f'; {who} runs {inside[0]} from the cache'
+            env = read_environ(member)
+            if env is None:
+                return None, f'; the environment of pid {member} of {who} could not be read'
+            if (entry := environment_in_cache(env, roots)):
+                return None, f'; {who} has {entry} from the cache in its environment'
+            args = procs[member][2]
+            named = [w for w in args.split() for w in (w, w.partition('=')[2]) if w and in_cache(w, roots)]
+            if named or any(r in args for r in roots):
+                return None, f'; {who} names {(named or [cache])[0]} in its command line, inside the cache'
+        seen.append(f'{who} started {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now - age))}')
+    for holder in seen:
+        run.say(f'uv cache lock held by {holder}; forcing the prune')
+    return ['uv', 'cache', 'prune', '--force'], ''
+
+
+def caches(run, commands, asks):
+    for name, args, timeout, busy in CACHES:
+        if not shutil.which(args[0]):
+            continue
+        if busy and any(re.search(busy, c) for c in commands):
+            run.say(f'skip {name}: a {name} process is running')
+            continue
+        if name == 'brew':
+            prefix = (sh(['brew', '--prefix']) or '').strip()
+            # cleanup also takes a lock under var/homebrew/locks, which brew creates owned by whoever ran it first
+            locks = Path(prefix) / 'var/homebrew/locks'
+            if not (os.access(Path(prefix) / 'Cellar', os.W_OK)
+                    and (not locks.exists() or os.access(locks, os.W_OK))):
+                run.say(f'skip brew: this account does not own {prefix or "the Homebrew prefix"}')
+                continue
+        if name == 'docker' and sh(['docker', 'info']) is None:
+            run.say('skip docker: no Docker daemon answers')
+            continue
+        if run.dry:
+            run.say(f'would run {" ".join(args)}')
+            continue
+        before = free()
+        done, why = attempt(args, timeout), ''
+        if done is None and name == 'uv':
+            forced, why = uv_force(run, timeout)
+            done = forced and attempt(forced, timeout)
+            args = forced or args
+        if done is None:
+            run.say(f'skip {name}: still running after {timeout}s, in use{why}')
+            continue
+        if done.returncode and name == 'uv' and 'Permission denied' in done.stderr:  # a cache another account shares
+            where = (sh(['uv', 'cache', 'dir']) or '').strip() or 'the uv cache'
+            run.say(f'skip uv: {where} holds files another account owns: {done.stderr.strip()[-300:]}')
+            asks.append(f'uv cache {where}: another account owns part of it, so `uv cache prune` here stops at its files; '
+                        'either account prunes it once both share one group (`chgrp -R`, `chmod -R g+w`, setgid on its '
+                        'folders, umask 002 in both), or each account sets its own UV_CACHE_DIR')
+        elif done.returncode:
+            run.failed = True
+            run.say(f'FAIL {name}: exit {done.returncode}: {(done.stderr or done.stdout).strip()[-300:]}')
+        else:
+            run.say(f'{name}: {" ".join(args)}: freed {(free() - before) / GB:.2f} GB')
+
+
+def checkouts(dev):
+    """(checkout root, its env dirs with a manifest beside them) for each git checkout under dev."""
+    found = {}
+    for dirpath, dirnames, filenames in os.walk(dev):
+        here = Path(dirpath)
+        if '.git' in dirnames or '.git' in filenames:
+            found[here] = []
+        root = next((p for p in (here, *here.parents) if p in found), None)
+        if root:
+            for env, manifests in MANIFESTS.items():
+                if env in dirnames and any((here / m).is_file() for m in manifests):
+                    found[root].append(here / env)
+        dirnames[:] = [d for d in dirnames if d not in PRUNE]
+    return found
+
+
+def git(path, *args, timeout=120):
+    # --no-optional-locks: a `status` must not refresh the index, or each round would renew the git-state clock that keeps a worktree
+    return sh(['git', '--no-optional-locks', '-C', str(path), *args], timeout)
+
+
+def github(root):
+    url = (git(root, 'config', '--get', 'remote.origin.url') or '').strip()
+    match = re.search(r'github\.com[:/]([^/]+/[^/]+?)(\.git)?$', url)
+    return match and match.group(1)
+
+
+def worktrees(run, found, dev, procs, asks):
+    candidates = []
+    for root in found:
+        if not (root / '.git').is_dir() or not (repo := github(root)):
+            continue
+        listing = git(root, 'worktree', 'list', '--porcelain') or ''
+        linked = [dict((*line.split(' ', 1), '')[:2] for line in block.splitlines())  # `locked` may have no reason
+                  for block in listing.strip().split('\n\n')[1:]]
+        linked = [w for w in linked if Path(w.get('worktree', '/')).is_relative_to(dev)]
+        if linked and git(root, 'fetch', '--quiet', '--prune', 'origin', timeout=180) is None:
+            run.say(f'note {root}: git fetch failed, remote refs may be stale')
+        candidates += [(root, repo, w) for w in linked]
+    # Deepest first: `git worktree remove` deletes ignored files too, so a worktree nested inside
+    # another one goes (or is kept) before the outer one is judged.
+    candidates.sort(key=lambda c: -len(Path(c[2]['worktree']).parts))
+    prs, live = {}, set()  # live: detached at a remote branch's tip, never judged, not even with an outer merged worktree
+    for root, repo, w in candidates:
+        if (branch := w.get('branch', '').removeprefix('refs/heads/')) and Path(w['worktree']).is_dir():
+            pr = json.loads(sh(['gh', 'pr', 'list', '-R', repo, '--state', 'merged', '--head', branch,
+                                '--json', 'number,headRefOid', '--limit', '1']) or '[]')
+            if pr:
+                prs[Path(w['worktree'])] = f'{repo}#{pr[0]["number"]} merged', pr[0]
+        elif 'detached' in w and Path(w['worktree']).is_dir():  # a verifier's checkout at a PR's head: a squash leaves it on no branch
+            if (git(root, 'branch', '-r', '--points-at', w['HEAD']) or '').strip():
+                live.add(Path(w['worktree']))
+                continue  # at a remote branch's tip (a landing checkout at the default branch): live, and a landed PR's head is that tip
+            pulls = json.loads(sh(['gh', 'api', f'repos/{repo}/commits/{w["HEAD"]}/pulls']) or '[]')
+            if pr := next((p for p in pulls if p['state'] == 'closed' and p['head']['sha'] == w['HEAD']), None):
+                prs[Path(w['worktree'])] = f'{repo}#{pr["number"]} closed', {'number': pr['number'], 'headRefOid': w['HEAD']}
+    for root, repo, w in candidates:
+        path = Path(w['worktree'])
+        if not path.is_dir() or path in live:
+            continue
+        outer = None
+        if path in prs:
+            what, pr = prs[path]
+        else:  # a worker's or agent's worktree inside a merged one: judged with it, or it holds the outer one for good
+            outer = max((p for p in prs if p != path and path.is_relative_to(p)), key=lambda p: len(p.parts), default=None)
+            if not outer:
+                continue
+            what, pr = f'in {outer}, {prs[outer][0]}', prs[outer][1]
+        # In use, holding another checkout or with a fresh tmp/: settles by itself, so kept without a question.
+        busy = in_use(path, procs)
+        # Read before `git status`, which may rewrite the index. A fetch touches FETCH_HEAD; a checkout, HEAD, index and logs/HEAD.
+        gitdir = Path(path, (git(path, 'rev-parse', '--git-dir') or '.git').strip())
+        active = sorted(n for n in GIT_ACTIVITY if (gitdir / n).exists() and changed(gitdir / n) > time.time() - 86400)
+        # SwiftPM's dependency clones under .build/checkouts/ come back with `swift package resolve`
+        nested = any(p != path and p.is_relative_to(path) and p.exists()
+                     and '/.build/checkouts/' not in f'/{p.relative_to(path).as_posix()}/' for p in found)
+        # `matching` names an ignored path by the pattern that ignores it (.gitignore or .git/info/exclude),
+        # not by the directory that folds it, so the reasons name the real holder.
+        status, lines = git(path, 'status', '--porcelain', '-z', '--ignored=matching'), []
+        rest = (status or '').split('\0')  # -z: no quoting, and a rename's source path follows it
+        while rest:
+            line = rest.pop(0)
+            if line[:1] in ('R', 'C'):
+                rest.pop(0)
+            if line:
+                lines.append(line)
+        deployed = apm_deployed(path)
+        # A held lock file keeps the worktree as `busy`: lsof lists it under the worktree.
+        held = {line: lock_files(path, line) for line in lines}
+        locks = [lock for files in held.values() for lock in files]
+        kept = [line for line in lines if not (disposable(line, path, root) or held[line])]
+        # A lead may still read its report. Every ignored file, also those in a folded build/ or skills/ dir.
+        files = git(path, 'ls-files', '-z', '--others')  # untracked and ignored alike
+        reports = {path / name for name in (files or '').split('\0') if REPORT_DIRS & set(Path(name).parts[:-1])}
+        reports |= {p for r in reports for p in r.parents if p.is_relative_to(path) and REPORT_DIRS & set(p.relative_to(path).parts)}
+        fresh = sorted(REPORT_DIRS if files is None else {d for p in reports if changed(p) > time.time() - 86400
+                                                          for d in REPORT_DIRS & set(p.relative_to(path).parts)})
+        why = []
+        if status is None:
+            why.append('not clean: git status failed')
+        if changes := [line for line in kept if not line.startswith('!! ')]:
+            why.append(f'not clean: {", ".join(changes)}')
+        # `git worktree remove` deletes ignored files: kept are those neither disposable nor APM payload
+        if ignored := [p for line in kept if line.startswith('!! ') for p in not_payload(path, line[3:], deployed)]:
+            why.append(f'ignored files that may not rebuild: {", ".join(ignored)}')
+        if nested:
+            why.append('another checkout is inside it')  # even under an ignored build/, which disposable() passes
+        if not pushed(path, pr['headRefOid']):
+            why.append('HEAD is on no remote branch and is not the PR head')
+        if fresh:
+            why.append(f'its {"/, ".join(fresh)}/ changed in the last 24 h')
+        if active:
+            why.append(f'its git state changed in the last 24 h ({", ".join(active)})')
+        if 'locked' in w:  # `git worktree remove` refuses it; a lock may be for good, so it is asked about
+            why.append(f'locked: {w["locked"] or "no reason given"}')
+        if busy:
+            why.append(busy)
+        if why := '; '.join(why):
+            run.say(f'skip worktree {path} ({what}): {why}')
+            if not (busy or nested or fresh or active):
+                asks.append(f'worktree {path} ({what}): {why}')
+                ROUTES[asks[-1]] = repo
+        elif run.dry:
+            run.say(f'would remove worktree {path} ({what})')
+        else:
+            before = free()
+            try:  # `git worktree remove` refuses untracked files; --force would delete whatever else is there
+                for lock in locks:
+                    lock.unlink()
+                for line in lines:  # untracked run reports: git won't remove them, and they are no one's work
+                    if line.startswith('?? ') and disposable(line, path, root):
+                        report = path / line[3:]  # a folded directory, or a single file beside tracked ones
+                        if report.is_dir() and not report.is_symlink():
+                            shutil.rmtree(report)
+                        else:
+                            report.unlink()
+            except OSError as error:
+                run.failed = True
+                run.say(f'FAIL worktree {path}: {error}')
+                continue
+            if git(root, 'worktree', 'remove', str(path)) is None:
+                run.failed = True
+                run.say(f'FAIL worktree {path}: git worktree remove failed')
+            else:
+                if outer:  # the empty dirs it leaves, such as .worktrees/, would hold the outer one
+                    try:
+                        os.removedirs(path.parent)
+                    except OSError:
+                        pass
+                run.say(f'removed worktree {path} ({what}): '
+                        f'freed {(free() - before) / GB:.2f} GB')
+
+
+# Ignored paths a merged worktree may hold and still be removed: environments and build output,
+# which rebuild, and logs and what is under tmp/ or logs/ (loop reports, proof), which go with their merged PR.
+DISPOSABLE = {'node_modules', '.venv', 'venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache',
+              'build', 'dist', '.gradle', '.kotlin', '.cxx', '.next', '.turbo', 'target', 'DerivedData',
+              'coverage', '.coverage', 'coverage.xml', '.testmondata', 'apm_modules', '.DS_Store', '.build',
+              '.terraform', 'test-results', 'playwright-report', 'snapshot_failures', '.apm-local'}  # `terraform init` rebuilds it; a local terraform.tfstate sits beside it, not in it
+ROUTES = {}  # a question about a repo's worktree -> that repo (owner/name), whose manager is asked
+GIT_ACTIVITY = ('HEAD', 'index', 'logs/HEAD', 'FETCH_HEAD')  # what a checkout, reset or fetch touches in the worktree's own git dir
+REPORT_DIRS = {'tmp', '.bootstrap-state'}  # run reports: kept while one changed in the last day
+EVIDENCE_DIRS = {'logs', *REPORT_DIRS}  # as directories only: a file named tmp may be anything
+CACHE_TAG = b'Signature: 8a477f597d28d172789f06886806bc55'
+GENERATED = re.compile(rb'(?i)\bgenerated\b.*\bdo not edit\b')
+
+
+def disposable(status_line, checkout, main=None):
+    """An ignored `git status --porcelain --ignored` entry that may go with its merged worktree; main is the main checkout."""
+    path = status_line[3:]
+    parts = Path(path).parts
+    dirs = set(parts if path.endswith('/') else parts[:-1])  # git marks an ignored directory with a trailing /
+    if status_line.startswith('?? '):  # untracked run reports count as ignored ones: fresh() holds back what changed lately
+        # a folded `?? tmp/`, or one file under a report dir whose tracked content (tmp/.gitkeep) keeps git from folding it
+        return bool(REPORT_DIRS & dirs)
+    return status_line.startswith('!! ') and (
+        bool(DISPOSABLE & set(parts)) or bool(EVIDENCE_DIRS & dirs) or path.endswith(('.pyc', '.egg-info/', '.log'))
+        # an ignored directory holding no file, only empty directories: nothing in it to lose
+        or path.endswith('/') and (checkout / path).is_dir() and not (checkout / path).is_symlink()
+        and not any(files for _, _, files in os.walk(checkout / path))
+        # a built web UI: a path suffix, so a tracked web-ui/ source dir is not matched
+        or parts[-2:] == ('static', 'web-ui')
+        # a copy of the main checkout's file at the same path; an ignored directory folded into one entry, every file in it
+        or bool(main) and same_tree(checkout / path, main / path)
+        # a cache by the Cache Directory Tagging spec: a regular file that starts with its signature
+        or path.endswith('/') and head(checkout / path / 'CACHEDIR.TAG', len(CACHE_TAG)) == CACHE_TAG
+        # a generated file that says so on its first line (Go's `Code generated ... DO NOT EDIT.`, a build's _build_info.py)
+        or not path.endswith('/') and bool(GENERATED.search(head(checkout / path, 300).split(b'\n')[0]))
+        # the cloud-environment pin a lead copies in from the main checkout, and nothing else
+        # ponytail: the file entry, or a file not_payload() expands; a repo without apm that ignores all of .claude/
+        # shows `!! .claude/` and keeps it
+        or path.endswith('.claude/settings.local.json') and pin_only(checkout / path)
+        # XcodeGen's output: the project.yml beside it names this project
+        or path.endswith('.xcodeproj/') and bool(re.search(rf'^name: *["\']?{re.escape(Path(path).stem)}["\']? *$',
+                                                           head((checkout / path).parent / 'project.yml').decode(errors='replace'), re.M)))
+
+
+def pin_only(path):
+    if len(raw := head(path, 4097)) > 4096:  # a pin is one short line; a longer file may hold anything
+        return False
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return False
+    return isinstance(data, dict) and list(data) == ['remote'] and isinstance(data['remote'], dict) \
+        and list(data['remote']) == ['defaultEnvironmentId']
+
+
+def lock_files(checkout, status_line):
+    """The *.lock files an untracked `git status` entry is, when it is nothing else; else [].
+    A folded `?? dir/` is listed file by file here, never in the log."""
+    if not status_line.startswith('?? '):
+        return []
+    entry = status_line[3:]
+    names = [entry] if not entry.endswith('/') else (
+        git(checkout, 'ls-files', '-z', '--others', '--exclude-standard', '--', entry) or '').split('\0')
+    files = [checkout / name for name in names if name]
+    return files if files and all(f.name.endswith('.lock') and f.is_file() for f in files) else []
+
+
+def same_tree(a, b):
+    """a is a regular file, or a directory of only regular files and directories, each byte-identical to b's at the same path."""
+    try:
+        if a.is_symlink() or b.is_symlink():
+            return False
+        if a.is_dir():
+            return b.is_dir() and any(a.iterdir()) and all(same_tree(c, b / c.name) for c in a.iterdir())
+        return a.is_file() and b.is_file() and filecmp.cmp(a, b, shallow=False)
+    except OSError:
+        return False
+
+
+def head(path, size=-1):
+    """The first size bytes of a regular file; b'' for a symlink or what can't be read."""
+    try:
+        if path.is_symlink():
+            return b''
+        with path.open('rb') as file:
+            return file.read(size)
+    except OSError:
+        return b''
+
+
+def changed(path):
+    """When path last changed; now when it can't be read."""
+    try:
+        return path.lstat().st_mtime
+    except OSError:
+        return time.time()
+
+
+def throw(error):
+    raise error
+
+
+def apm_deployed(checkout):
+    """What `apm install` wrote into checkout: apm.lock.yaml's deployed_files and local_deployed_files."""
+    try:
+        text = (checkout / 'apm.lock.yaml').read_text()
+    except OSError:
+        return set()
+    deployed, key, item = set(), None, None  # the indent of a deployed_files: key, and of its list's items
+    for line in text.splitlines():
+        indent = len(line) - len(line.lstrip(' '))
+        if key is not None and indent >= key and indent == (indent if item is None else item) and (
+                match := re.match(r' *- (.+)$', line)):
+            item = indent
+            deployed.add(match.group(1).strip('\'"').rstrip('/'))
+        elif key is not None and line.strip() and indent > key:
+            return set()  # a continuation or nesting this reader doesn't parse: claim nothing
+        else:
+            key, item = (indent, None) if re.match(r' *(local_)?deployed_files:\s*$', line) else (None, None)
+    return deployed
+
+
+def not_payload(checkout, entry, deployed):
+    """What under an ignored entry `apm install` does not deploy (neither listed in the lockfile nor in a
+    listed directory): the entry itself when none of it is, else those files."""
+    top = checkout / entry
+    try:
+        files = [top] if not deployed or top.is_symlink() or not top.is_dir() else [
+            Path(d) / n for d, ds, fs in os.walk(top, onerror=throw) for n in fs + [s for s in ds if (Path(d) / s).is_symlink()]]
+    except OSError:
+        return [entry]
+    rels = [f.relative_to(checkout) for f in files]
+    rest = [rel.as_posix() for rel in rels if not any(p.as_posix() in deployed for p in [rel, *rel.parents][:-1])
+            and not (rel.as_posix().endswith('.claude/settings.local.json') and pin_only(checkout / rel))]  # as disposable() does
+    target = entry.rstrip('/')  # an APM target such as .claude/skills/: name each file apm doesn't own in it
+    apm = any(d == target or d.startswith(target + '/') for d in deployed)
+    return [entry] if rest and len(rest) == len(rels) and not apm else rest
+
+
+def pushed(path, pr_head):
+    head = (git(path, 'rev-parse', 'HEAD') or '').strip()
+    if head == pr_head or (git(path, 'branch', '-r', '--contains', 'HEAD') or '').strip():
+        return True
+    if git(path, 'merge-base', '--is-ancestor', 'HEAD', pr_head) is not None:  # nothing the PR lacks
+        return True
+    tree = lambda rev: (git(path, 'rev-parse', '--verify', '--quiet', f'{rev}^{{tree}}') or '').strip()
+    return bool(head) and tree(pr_head) == tree('HEAD')  # a squash or rebase kept the PR's content
+
+
+def last_change(root):
+    """Newest of the checkout's tracked and untracked non-ignored files, its index and last commit."""
+    files = (git(root, 'ls-files', '-z', '-co', '--exclude-standard') or '').split('\0')
+    times = [int((git(root, 'log', '-1', '--format=%ct') or '0').strip() or 0)]
+    index = (git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'index') or '').strip()
+    for name in filter(None, [*files, index]):
+        try:
+            times.append((root / name).lstat().st_mtime)
+        except (OSError, ValueError):
+            pass
+    return max(times)
+
+
+def environments(run, found, idle_days, procs):
+    cutoff = time.time() - idle_days * 86400
+    for root, envs in found.items():
+        if not envs or not root.is_dir():  # its worktree was removed above
+            continue
+        why = in_use(root, procs)
+        if not why and (changed := last_change(root)) > cutoff:
+            why = f'changed {(time.time() - changed) / 86400:.0f} days ago'
+        for env in envs:
+            if why or env.is_symlink():
+                run.say(f'skip env {env}: {why or "a symlink to elsewhere"}')
+            elif run.dry:
+                run.say(f'would remove env {env}')
+            else:
+                before = free()
+                try:
+                    shutil.rmtree(env)
+                except OSError as error:
+                    run.failed = True
+                    run.say(f'FAIL env {env}: {error}')
+                    continue
+                run.say(f'removed env {env}: freed {(free() - before) / GB:.2f} GB')
+
+
+# {server: token} for the servers named in argv that this account is logged in to.
+LOGINS = """import json, sys
+from omnigent.cli_auth import load_token, refresh_stored_token
+tokens = {}
+for server in dict.fromkeys(s.rstrip('/') for s in sys.argv[1:]):
+    token = load_token(server, min_remaining_seconds=180) or refresh_stored_token(server)
+    if token:
+        tokens[server] = token
+print(json.dumps(tokens))"""
+DEFAULT_SERVER = 'http://localhost:6767'  # the Omnigent CLI's own default
+
+
+def configured_server():
+    """The server the CLI uses: config.yaml's `server:`, else RUNNER_SERVER_URL, else the CLI default."""
+    config = HOME / '.omnigent/config.yaml'
+    found = re.findall(r'^server: *(\S+)', config.read_text(), re.M) if config.exists() else []
+    return (found[0] if found else os.environ.get('RUNNER_SERVER_URL') or DEFAULT_SERVER).rstrip('/')
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect would carry the bearer token to wherever it points: refuse it (urllib raises HTTPError)."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def failure(error):
+    """An error as its HTTP status or class only: a server's own error text may echo the token it got."""
+    return f'HTTP {error.code}' if isinstance(error, urllib.error.HTTPError) else type(error).__name__
+
+
+def tell(text, repo=None):
+    """Post text into an Omnigent session; raises when it can't.
+
+    With ``repo`` (owner/name), that repo's project manager (``omni.role=pm``, ``omni.repos`` naming the
+    repo's name or owner/name) gets it, and the chief of staff when none is live. Without, the chief of staff.
+
+    Only the configured server is asked (``configured_server()``): another account's server may be logged in on
+    this machine, and a server that answers with no chief of staff is a fact about it, not a reason to try another.
+    The RuntimeError names the server and what failed."""
+    server = configured_server()
+    tokens = json.loads(subprocess.run([OMNIGENT_PYTHON, '-c', LOGINS, server],
+                                       text=True, capture_output=True, timeout=120).stdout or '{}')
+    if not (token := tokens.get(server)):
+        raise RuntimeError(f'{server}: no Omnigent login on this account')
+    opener = urllib.request.build_opener(NoRedirect)
+    names = {repo, repo.rsplit('/', 1)[-1]} if repo else set()
+
+    def manages(session):
+        return bool(names & set((session.get('labels') or {}).get('omni.repos', '').split(',')))
+
+    def api(method, path, body=None):
+        request = urllib.request.Request(server + path, method=method,
+            data=None if body is None else json.dumps(body).encode(),
+            headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+        with opener.open(request, timeout=30) as response:
+            return json.load(response)
+
+    for role in ('pm', 'cos') if repo else ('cos',):
+        try:
+            listing = api('GET', '/v1/sessions?limit=100&sort_by=updated_at')
+            cos = next((s['id'] for s in listing.get('data') or []
+                        if (s.get('labels') or {}).get('omni.role') == role and not s.get('archived')
+                        and (role == 'cos' or manages(s))), None)
+            if not cos:
+                continue
+            if not api('GET', f'/v1/sessions/{cos}').get('runner_online', True):
+                api('POST', f'/v1/sessions/{cos}/events', {'type': 'retry_session', 'data': {}})  # a reaped runner
+                for _ in range(30):
+                    time.sleep(4)
+                    if api('GET', f'/v1/sessions/{cos}').get('runner_online'):
+                        break
+        except Exception as error:  # noqa: BLE001 - unreachable, logged out, redirected, not Omnigent
+            raise RuntimeError(f'{server}: {failure(error)}') from None
+        try:
+            api('POST', f'/v1/sessions/{cos}/events', {'type': 'message', 'data': {
+                'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}})
+        except urllib.error.HTTPError as error:  # the server answered with a refusal: not delivered
+            raise RuntimeError(f'{server}: message refused: {failure(error)}') from None
+        except Exception as error:  # a timeout or a dropped connection may have delivered it: no second copy
+            raise RuntimeError(f'{server}: the message may not have arrived: {failure(error)}') from None
+        return f'{cos} on {server}'
+    raise RuntimeError(f'{server}: no chief of staff session (label omni.role=cos)')
+
+
+def doctor(run):
+    """dotagents doctor's findings, or None when it failed (logged, and the run fails)."""
+    if not DOTAGENTS.is_file():
+        return None
+    try:
+        done = subprocess.run([str(DOTAGENTS), 'doctor'], text=True, capture_output=True, timeout=900)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        run.failed = True
+        run.say(f'FAIL dotagents doctor: {error}')
+        return None
+    found = done.stdout.splitlines()
+    if done.returncode == 2:  # dotagents' usage exit: this checkout predates its doctor
+        found = [f'{DOTAGENTS} has no doctor command: pull it and run `dotagents install`']
+    if done.returncode not in (0, 1, 2) or (done.returncode == 1 and not found):
+        run.failed = True
+        run.say(f'FAIL dotagents doctor: exit {done.returncode}: {done.stderr.strip()[-300:]}')
+    return found
+
+
+def checkout_of(line):
+    """The git checkout root holding the first path a finding names (a path under HOME, not HOME itself), else None."""
+    for word in re.findall(r"(?<![\w.~-])/[^\s:;,'\")]+", line):
+        for parent in (Path(word), *Path(word).parents):
+            if parent == HOME or parent == parent.parent:
+                break
+            if (parent / '.git').exists():
+                return parent
+    return None
+
+
+def catch_up(run, root):
+    """A fast-forward to origin's default branch (just fetched; not `git pull`, which follows the branch's own upstream) in a checkout that is on its default branch, clean, with no local commits and origin strictly
+    ahead; true when it moved. A dirty, diverged or other-branch checkout is never touched: a person owns its state."""
+    default = (git(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD') or '').strip()
+    if not default or git(root, 'fetch', '--quiet', 'origin', timeout=180) is None:
+        return False
+    if ((git(root, 'branch', '--show-current') or '').strip() != default.split('/', 1)[-1]
+            or git(root, 'status', '--porcelain') != ''
+            or git(root, 'rev-list', '--count', f'{default}..HEAD') != '0\n'
+            or (git(root, 'rev-list', '--count', f'HEAD..{default}') or '0\n') == '0\n'):
+        return False
+    if run.dry:
+        run.say(f'would pull {root} (clean, on {default.split("/", 1)[-1]}, behind {default})')
+        return False
+    before = (git(root, 'rev-parse', '--short', 'HEAD') or '').strip()
+    if git(root, 'merge', '--ff-only', '--quiet', default, timeout=180) is None:
+        run.say(f'FAIL git merge --ff-only in {root}')
+        return False
+    run.say(f'pulled {root}: {before} -> {(git(root, "rev-parse", "--short", "HEAD") or "").strip()}')
+    return True
+
+
+DRIFT_ROUTES = {}  # a doctor finding inside a repo -> that repo (owner/name), whose manager is told
+
+
+def drift(run):
+    """dotagents doctor's findings, each logged: a tool a skill needs that is missing or too old, a stale skill copy.
+    A finding inside a checkout that is only behind its origin is tried by a pull first, and logged, not returned, when
+    it clears."""
+    found = doctor(run)
+    if found is None:
+        return []
+    roots = {line: checkout_of(line) for line in found}
+    if any([catch_up(run, root) for root in dict.fromkeys(r for r in roots.values() if r)]):
+        if (again := doctor(run)) is not None:
+            for line in found:
+                if line not in again:
+                    run.say(f'CLEARED: {line}')
+            found = again
+    for line in found:
+        run.say(f'DRIFT: {line}')
+        if (root := roots.get(line) or checkout_of(line)) and (repo := github(root)):
+            DRIFT_ROUTES[line] = repo
+    return found
+
+
+def relaunch():
+    """Run the new copy of this script in place of this one."""
+    os.environ['AGENT_HYGIENE_RELAUNCHED'] = '1'  # a pin that still differs after one fast-forward reports instead of looping
+    os.execv(sys.executable, [sys.executable, *sys.argv])
+
+
+def fast_forward(run, retry=False):
+    """Move a clean checkout on main to origin/main, then install it; false when nothing moved (up to date, or a person
+    must handle it: tracked changes, other branch, diverged) and no earlier install failed. Untracked files don't block:
+    `merge --ff-only` itself refuses one that main would overwrite."""
+    before = git(REPO, 'rev-parse', 'HEAD')
+    if not (git(REPO, 'status', '--porcelain', '--untracked-files=no') == '' and git(REPO, 'branch', '--show-current') == 'main\n'
+            and git(REPO, 'merge', '--ff-only', '--quiet', 'origin/main') is not None
+            and (retry or git(REPO, 'rev-parse', 'HEAD') != before)):
+        return False
+    if DOTAGENTS.is_file():  # a release may change the links or generated settings install makes
+        try:
+            done = subprocess.run([str(DOTAGENTS), 'install', '--no-pull'], text=True, capture_output=True, timeout=900)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            done = None
+            problem = str(error)
+        if done and done.returncode:
+            problem = f'exit {done.returncode}: {(done.stdout + done.stderr).strip()[-300:]}'
+        if not done or done.returncode:
+            run.failed = True
+            run.say(f'FAIL dotagents install after a fast-forward: {problem}')
+            os.environ['AGENT_HYGIENE_FAILED'] = problem  # the relaunched copy starts a new Run: it reports this and exits 1
+            INSTALL_FAILED.write_text(problem + '\n')  # the checkout has moved: only this makes the next run install again
+        else:
+            INSTALL_FAILED.unlink(missing_ok=True)
+    return True
+
+
+def stale(run, dry_run=False):
+    """A line saying the dotagents checkout pins another pack than its origin/main (a missed release), else None.
+    A checkout that can fast-forward does on any release, and its install puts in the pack it pins: this run then starts
+    over as the newly installed script when the release moved the pin."""
+    if not (REPO / '.git').exists() or git(REPO, 'fetch', '--quiet', 'origin', 'main', timeout=180) is None:
+        return None  # a cached origin/main may be older than this checkout: no claim
+    main, mine = git(REPO, 'show', f'origin/main:{LOCK}'), (REPO / LOCK).read_bytes() if (REPO / LOCK).is_file() else b''
+    differs = main is not None and main.encode() != mine
+    retry = INSTALL_FAILED.is_file()  # the pack may still be the old one, and so may this script
+    moved = not dry_run and not os.environ.get('AGENT_HYGIENE_RELAUNCHED') and fast_forward(run, retry)
+    if (differs or retry) and moved:
+        relaunch()
+        return None
+    if not differs:
+        return None
+    digest = lambda data: hashlib.sha256(data).hexdigest()[:12]
+    return (f'The dotagents checkout {REPO.resolve()} pins another engineering pack than its origin/main ({LOCK} sha256 '
+            f'{digest(mine)}, origin/main\'s {digest(main.encode())}), so agent-hygiene and the pack\'s other skills there are '
+            'old: pull that checkout and run `dotagents install`.')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--floor-gb', type=float, default=20)
+    parser.add_argument('--idle-days', type=float, default=14)
+    parser.add_argument('--dev', type=Path, default=HOME / 'dev')
+    parser.add_argument('--hold-asks', action='store_true',
+                        help='print every question as an ASK: line and tell the chief of staff none of them')
+    args = parser.parse_args()
+    global STATE, INSTALL_FAILED
+    if OLD_STATE.is_dir() and args.dry_run:  # what was asked stays where it is; the log joins it
+        STATE = OLD_STATE
+    elif OLD_STATE.is_dir():  # STATE may hold a dry run's logs, so merge rather than rename
+        shutil.copytree(OLD_STATE, STATE, dirs_exist_ok=True)
+        shutil.rmtree(OLD_STATE)
+    INSTALL_FAILED = STATE / 'install-failed'
+    STATE.mkdir(parents=True, exist_ok=True)
+    for old in STATE.glob('*.log'):
+        if old.stat().st_mtime < time.time() - 30 * 86400:
+            old.unlink()
+    run = Run(args.dry_run, STATE / time.strftime('%Y%m%dT%H%M%SZ.log', time.gmtime()))
+    who = f'{getpass.getuser()}@{socket.gethostname()}'
+    try:  # the Omnigent host name, the one the chief of staff knows this account by
+        who = re.search(r'^host:\n(?:[ \t]+.*\n)*?[ \t]+name: *(\S+)', (HOME / '.omnigent/config.yaml').read_text(),
+                        re.M).group(1)
+    except (OSError, AttributeError):
+        pass
+    start = free()
+    run.say(f'agent-hygiene {who}{" (dry run)" if args.dry_run else ""}: {start / GB:.1f} GB free')
+    # ponytail: DISK_HYGIENE_FAILED is what the old disk-hygiene sets before it relaunches into this script; drop with that link
+    if carried := os.environ.pop('AGENT_HYGIENE_FAILED', None) or os.environ.pop('DISK_HYGIENE_FAILED', None):
+        run.failed = True
+        run.say(f'FAIL dotagents install after a fast-forward: {carried}')
+        if not args.dry_run:
+            INSTALL_FAILED.write_text(carried + '\n')
+    asks = []  # what may be wanted: the owner decides
+    if old := stale(run, args.dry_run):  # first: a fast-forward starts this run over as the new copy
+        run.say(f'STALE: {old}')
+    procs = processes()
+    if procs is None:
+        run.failed = True
+        run.say('FAIL process scan: lsof or ps failed; worktrees, environments and caches left alone')
+    else:
+        dead_terminals(run)
+        if args.dev.is_dir():
+            found = checkouts(args.dev.resolve())
+            worktrees(run, found, args.dev.resolve(), procs, asks)
+            environments(run, found, args.idle_days, procs)
+    drifted = drift(run)
+    # Caches last: a pnpm node_modules is an APFS clone of the store, so removing one frees its
+    # blocks only once `pnpm store prune` drops the store's copy.
+    if procs is not None:
+        caches(run, procs[1], asks)
+    try:  # simulator devices hold app data, so they are asked about, never deleted
+        devices = json.loads(sh(['xcrun', 'simctl', 'list', 'devices', 'unavailable', '-j']) or '{}')
+        if count := sum(map(len, devices.get('devices', {}).values())):
+            asks.append(f'{count} simulator devices whose runtime is gone, with their app data: '
+                        '`xcrun simctl delete unavailable` deletes them')
+    except (ValueError, AttributeError, TypeError):
+        run.say('note: could not read the simulator list')
+    if SPARKLE.is_dir():
+        kb = (subprocess.run(['du', '-sk', str(SPARKLE)], text=True, capture_output=True).stdout.split() or ['0'])[0]
+        run.say(f'note: {int(kb) / 1e6:.1f} GB of staged ChatGPT updates in {SPARKLE}, left alone')
+        asks.append(f'staged ChatGPT updates in {SPARKLE}: update ChatGPT or delete them in Finder '
+                    '(App Management blocks deleting them from a shell)')
+    end = free()
+    run.say(f'free {start / GB:.1f} -> {end / GB:.1f} GB (freed {(end - start) / GB:.1f} GB); log {run.log}')
+    low, parts, warning = end < args.floor_gb * GB, [], False
+    stamp = STATE / 'warned'
+    if low and stamp.exists() and stamp.stat().st_mtime > time.time() - WARN_EVERY:
+        run.say(f'LOW DISK: under {args.floor_gb:g} GB; chief of staff already told in the last 20 h')
+    elif low:
+        warning = True
+        parts.append(f'Low disk: {end / GB:.1f} GB free on / (floor {args.floor_gb:g} GB; '
+                     f'this run freed {(end - start) / GB:.1f} GB). What is left needs a decision.')
+    asked_file = STATE / 'asked'  # ponytail: grows by a line per question, prune it if it ever matters
+    try:
+        asked = set(json.loads(asked_file.read_text()))
+    except (OSError, ValueError):
+        asked = set()
+    if old and old not in asked:  # told once per pair of copies
+        parts.append(old)
+    pending = [line for line in dict.fromkeys(drifted) if line not in asked]  # each finding told once
+    sent = set()
+    by_repo = {}  # a finding inside a repo goes to its manager; the chief of staff gets the rest, and any whose manager can't be told
+    for line in pending:
+        if repo := DRIFT_ROUTES.get(line):
+            by_repo.setdefault(repo, []).append(line)
+    pending = [line for line in pending if line not in DRIFT_ROUTES]
+    for repo, lines in by_repo.items():
+        body = (f'agent-hygiene on {who}, for the owner to decide (log {run.log} on that account):\n\n'
+                'dotagents doctor, in a checkout of this repo (dotagents README, Skill requirements and doctor):\n'
+                + '\n'.join(f'- {line}' for line in lines[:ASK_MAX]))
+        if args.dry_run:
+            run.say(f'would tell the manager of {repo}:\n' + '\n'.join(lines[:ASK_MAX]))
+            continue
+        try:
+            run.say(f'told the manager of {repo} (session {tell(body, repo)}): {len(lines[:ASK_MAX])} drift findings')
+            sent.update(lines[:ASK_MAX])
+        except Exception as error:  # noqa: BLE001 - its findings go to the chief of staff instead
+            run.say(f'FAIL telling the manager of {repo}: {error}')
+            pending += lines
+    if new_drift := pending[:ASK_MAX]:
+        parts.append('dotagents doctor: what this account\'s agents\' skills need and lack, or old skill copies they can reach '
+                     '(dotagents README, Skill requirements and doctor):\n' + '\n'.join(f'- {line}' for line in new_drift)
+                     + (f'\n- and {len(pending) - ASK_MAX} more, in the log' if len(pending) > ASK_MAX else ''))
+    fresh = [line for line in dict.fromkeys(asks) if line not in asked]
+    if args.hold_asks:  # the round's agent settles the routine ones, then runs again without it to ask about the rest
+        for line in dict.fromkeys(asks):
+            run.say(f'ASK: {line}')
+        fresh = []
+    routed = {}  # a repo's worktree questions go to its manager, the rest to the chief of staff
+    for line in fresh:
+        if repo := ROUTES.get(line):
+            routed.setdefault(repo, []).append(line)
+    fresh = [line for line in fresh if line not in ROUTES]
+    if fresh:
+        parts.append('Kept, since they may hold something wanted. Which may go?\n'
+                     + '\n'.join(f'- {line}' for line in fresh[:ASK_MAX])
+                     + (f'\n- and {len(fresh) - ASK_MAX} more, in the log' if len(fresh) > ASK_MAX else ''))
+    code = 1 if run.failed else 2 if low else 0
+    if not parts and not routed:
+        if sent:
+            asked_file.write_text(json.dumps(sorted(asked | sent)))
+        return code
+    header = f'agent-hygiene on {who}, for the owner to decide (log {run.log} on that account):\n\n'
+    text = header + '\n\n'.join(parts)
+    if args.dry_run:
+        for repo, lines in routed.items():
+            run.say(f'would tell the manager of {repo}:\n' + '\n'.join(lines[:ASK_MAX]))
+        if parts:
+            run.say(f'would tell the chief of staff:\n{text}')
+        return code
+    for repo, lines in routed.items():
+        body = header + 'Kept, since they may hold something wanted. Which may go?\n' + '\n'.join(
+            f'- {line}' for line in lines[:ASK_MAX]) + (f'\n- and {len(lines) - ASK_MAX} more, in the log' if len(lines) > ASK_MAX else '')
+        try:
+            run.say(f'told the manager of {repo} (session {tell(body, repo)}): {len(lines[:ASK_MAX])} questions')
+        except Exception as error:  # noqa: BLE001 - reported in the log and the exit code
+            run.say(f'FAIL telling the manager of {repo}: {error}')
+            code = 1
+        else:
+            sent.update(lines[:ASK_MAX])
+    if not parts:
+        asked_file.write_text(json.dumps(sorted(asked | sent)))
+        return code
+    try:
+        cos = tell(text)
+    except Exception as error:  # noqa: BLE001 - reported in the log and the exit code
+        run.say(f'FAIL telling the chief of staff: {error}')
+        return 1
+    if warning:  # a message with only questions leaves the warning's clock alone
+        stamp.touch()
+    asked_file.write_text(json.dumps(sorted(asked | sent | set(fresh[:ASK_MAX]) | set(new_drift) | ({old} if old else set()))))
+    run.say(f'told the chief of staff (session {cos}): {"low disk, " if warning else ""}{len(fresh[:ASK_MAX])} questions, {len(new_drift)} drift findings')
+    return code
+
+
+if __name__ == '__main__':
+    sys.exit(main())

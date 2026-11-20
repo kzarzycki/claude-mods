@@ -1,0 +1,66 @@
+# The loop's merge approvals: posts `mise run loop:approvals merge`'s result as the
+# `loop:approvals` commit status on the PR head, which main's ruleset requires: pending while
+# it waits for CI's `check` or the owner's approved:merge on a high-risk PR, failure when a proof is
+# missing, success once every proof holds. It reruns when a label or the PR body changes and
+# when CI completes; a push removes approved:merge. It only posts the status and never merges:
+# `mise run loop:land` lands PRs, gating every landable one as a batch under a lock. The job itself
+# is named `approvals`, so its own check run never stands in for the status.
+name: Approvals
+# Every trigger below runs main's copy of this file and checks out main, never the PR's code: this
+# job holds a write token, and a trigger that runs the PR's own copy of the workflow would let a PR
+# edit this file and post its own green status. `pull_request` and
+# `pull_request_review` do run the PR's copy, so they never appear here with a token: the token-less
+# `approvals_relay.yml` listens to reviews and this job reacts to its completion.
+on:
+  # The PR's labels, body and head. The job checks out the default branch only and reads the PR
+  # through the API, so the PR's code never runs here.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
+  # A review (the verifier's verdict) reaches here through the relay's completion,
+  # which runs main's copy of this workflow.
+  # A green `check` updates the status without a new push, the same way.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [CI, Approvals relay]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  # An event the job skips gets a group of its own, so it never cancels a run that posts the status.
+  group: >-
+      ${{ ((github.event_name == 'pull_request_target' && !github.event.pull_request.draft && github.actor != 'dependabot[bot]')
+      || (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.name == 'Approvals relay')))
+      && format('approvals-{0}', github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha || github.sha)
+      || format('approvals-skipped-{0}', github.run_id) }}
+  cancel-in-progress: true
+
+jobs:
+  approvals:
+    # A dependabot PR's own run has a read-only token; its status comes from the CI completion run.
+    if: >-
+      ${{ (github.event_name == 'pull_request_target' && !github.event.pull_request.draft && github.actor != 'dependabot[bot]')
+      || (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.name == 'Approvals relay')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # adds risk:high to a PR the gate finds high risk
+      pull-requests: write # removes approved:merge on a push
+      checks: read
+      actions: read # approvals.py reads each check run's workflow (checkSuite.workflowRun)
+      statuses: write # posts loop:approvals
+    steps:
+      # main's code and policy on every trigger; the PR is read through the API.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: uv # approvals.py runs with uv run, which installs its PyYAML; gh is on the runner
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ github.event.action }}
+          PR: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: mise run ci:approvals

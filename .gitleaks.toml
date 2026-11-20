@@ -1,0 +1,10 @@
+# gitleaks config — extends the bundled default ruleset.
+# Add false positives as one-line entries under [allowlist].
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Project allowlist for known false positives"
+paths = [
+  '''\.env\.example$''',
+]

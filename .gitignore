@@ -1,2 +1,23 @@
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Coding-agent generated/cache state
+apm_modules/
+fnox.local.toml
+
+# Agents' worktrees
+.worktrees/
+
+# The engineering loop's briefs, verifier reports and repros
+tmp/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
 # Laid by Claude Code for the CLI version that loaded the mod.
 plugins/*/.claude-plugin/types/

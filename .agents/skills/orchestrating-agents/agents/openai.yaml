@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orchestrating agents"
+  short_description: "Start, message, watch and collect agents through one backend, reports as files"
+  default_prompt: "Use $orchestrating-agents to start this agent through the backend that holds here, wait for its report file, answer its question file if it writes one, and close it once the report is in."
