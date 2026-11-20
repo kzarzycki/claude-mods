@@ -289,6 +289,14 @@ async function drive($: EngineInterface, code: string, maxCalls: number, run: { 
   if (signal?.aborted) return interrupted;
   let ev: Event = await post($, "/run", { code, cwd }, at);
   const cell = (run.cell = ev.cell ?? "");
+  // Every reply to the cell goes through here. Once interrupted, none reaches it on any path: the abort
+  // listener's /cancel is a separate request the kernel may take second, and a reply taken first
+  // (a failed call's error, say) would let the script run on. The throw lands in runScript's catch,
+  // which reports the interrupt.
+  const reply = (path: "/next" | "/resume", body: object) => {
+    if (signal?.aborted) throw new Error("interrupted");
+    return post($, path, { ...body, cell }, at);
+  };
   let calls = 0;
   while (ev.status === "call" || ev.status === "wait") {
     // An interrupt that came before the cell id was known (during /run) had nothing to cancel then.
@@ -298,7 +306,7 @@ async function drive($: EngineInterface, code: string, maxCalls: number, run: { 
     }
     if (ev.status === "wait") {
       // The kernel answers "wait" every ~20 s so no request outlives the host's fetch limit.
-      ev = await post($, "/next", { cell }, at);
+      ev = await reply("/next", {});
       continue;
     }
     if (++calls > maxCalls) {
@@ -316,22 +324,19 @@ async function drive($: EngineInterface, code: string, maxCalls: number, run: { 
         if (spawned.deny !== undefined || !spawned.agentId) throw new Error(spawned.deny ?? "no agent id");
         agentId = spawned.agentId;
       } catch (err) {
-        ev = await post($, "/resume", { callId, ok: false, error: `agent: ${String(err)}`, cell }, at);
+        ev = await reply("/resume", { callId, ok: false, error: `agent: ${String(err)}` });
         continue;
       }
       agentCalls.set(agentId, { callId, schema: payload.schema, at });
       scriptAgents.add(agentId);
-      ev = await post($, "/next", { cell }, at);
+      ev = await reply("/next", {});
       continue;
     }
     try {
-      const value = await hostCall($, kind, payload);
-      // Interrupted during the call: the abort listener already cancelled the cell, so don't resume it.
-      if (signal?.aborted) return interrupted;
-      ev = await post($, "/resume", { callId, ok: true, value, cell }, at);
+      ev = await reply("/resume", { callId, ok: true, value: await hostCall($, kind, payload) });
     } catch (err) {
       if (err instanceof KernelLost) throw err;
-      ev = await post($, "/resume", { callId, ok: false, error: err instanceof Error ? err.message : String(err), cell }, at);
+      ev = await reply("/resume", { callId, ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   }
   // A script that ended while the interrupt was on its way still reports the interrupt, not its value.
