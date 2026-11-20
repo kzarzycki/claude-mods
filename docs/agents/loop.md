@@ -35,7 +35,8 @@ on work the owner already approved:
   the pack keeps that rule.
 - `levels.high` `{spec: policy, merge: gates}` lands a high-risk PR on its
   gates. A PR rates high when `risk:high` is on it or its issue, the `risk`
-  rule matches, or the verifier's cap was reached with a blocker or major open.
+  rule matches, or the verifier's cap was reached unsatisfied (the
+  engineering-loop skill's SKILL.md, Approvals and proof, has the full rule).
   The rating still shows as `risk:high`, and the pack still requires a
   default-tier verifier verdict for it, so standing approval doesn't skip review.
 - `critical` keeps the pack's default, the owner's own go on the head. No
@@ -45,8 +46,9 @@ Withdrawing the standing approval is one edit to gatekeeper.md's block, through
 this loop.
 
 The `risk` rule decides what shows as `risk:high`. `verifier: true` rates a
-change high when the verifier's newest pass on the head says anything but
-`Risk: low`. The paths rate high on their own: CI's workflows and rulesets under
+change high when a verifier pass said anything but `Risk: low`, until a later
+`Scope: full` pass says `Risk: low`; a low pass on only a delta since then
+leaves it high. The paths rate high on their own: CI's workflows and rulesets under
 `.github/`, `CODEOWNERS`, this file and gatekeeper.md, since each decides what
 the gates require and who approves. `risk` also takes `labels` (such as
 `size:XL` or `area:<name>`, one per line) and `always: true`. `cap: <n>` under

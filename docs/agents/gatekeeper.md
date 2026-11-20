@@ -11,8 +11,7 @@ know is refused, naming it. loop.md § Approvals says why the policy is what it 
 
 ```yaml
 spec:
-  # the owner's standing approval: every spec is approved by policy; one opened
-  # by an account without write access still waits for the owner
+  # the owner's standing approval (loop.md § Approvals)
   auto: true
 
 # practice:
@@ -28,8 +27,7 @@ risk:
     - docs/agents/gatekeeper.md
 
 levels:
-  # the owner's standing approval covers merges: a high-risk PR lands on its
-  # gates; it still shows `risk:high` and needs a default-tier verifier verdict
+  # the owner's standing approval covers merges (loop.md § Approvals)
   high:
     spec: policy
     merge: gates
