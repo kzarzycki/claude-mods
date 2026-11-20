@@ -569,7 +569,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:b6fdce446cc06ad0bb3487255e2fcdaba43622f13ebbc2c248290884179056f8
+  content_hash: sha256:02b62bad0286b84c4619744334616406414d186465ca2ed0e8a4d523d4a88d21
 - kind: project-relative
   target: claude
   value: .claude/skills/agent-hygiene
@@ -3291,4 +3291,4 @@ deployments:
 local_deployed_files:
 - .claude/rules/project.md
 local_deployed_file_hashes:
-  .claude/rules/project.md: sha256:b6fdce446cc06ad0bb3487255e2fcdaba43622f13ebbc2c248290884179056f8
+  .claude/rules/project.md: sha256:02b62bad0286b84c4619744334616406414d186465ca2ed0e8a4d523d4a88d21
