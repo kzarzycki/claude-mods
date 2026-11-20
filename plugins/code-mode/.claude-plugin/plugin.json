@@ -1,0 +1,11 @@
+{
+  "name": "code-mode",
+  "version": "0.2.0",
+  "description": "Claude Code's Code Mode as a mod: one `repl` tool runs JavaScript in a persistent kernel with $, file, edit, write, tools and agent(). Preferred beside the other tools, or the one way to work when the session denies them.",
+  "userConfig": {
+    "bun": { "type": "string", "title": "Bun executable", "description": "Command that runs the kernel", "default": "bun" },
+    "maxCalls": { "type": "number", "title": "Host calls per script", "description": "A script making more tool/model/agent calls than this is stopped", "default": 200, "min": 1 },
+    "mode": { "type": "string", "title": "Prompt mode", "description": "auto: exclusive when Bash, Read and Edit are denied, preferred otherwise; or force preferred / exclusive", "default": "auto" },
+    "subagents": { "type": "string", "title": "Subagents' REPL", "description": "shared: a subagent's scripts run in the session's kernel and see its variables; own: each subagent gets a kernel of its own", "default": "shared" }
+  }
+}

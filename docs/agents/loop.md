@@ -68,7 +68,7 @@ your git identity) and every file matches its `paths`.
 
 ## Risk criteria
 
-A change that widens what a model can make a mod do: the eval kernel's scripts, calls through
+A change that widens what a model can make a mod do: code-mode's repl scripts, calls through
 `$.tool.call` (Claude Code's deny rules don't bind them), or a mod reading or writing another
 mod's state or settings.
 

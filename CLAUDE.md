@@ -13,6 +13,6 @@ Claude Code mods: hooks, tools and panels that change how Claude Code works.
 ## Tooling (Claude Code mods)
 
 - Each mod is a folder under `plugins/`, listed in `.claude-plugin/marketplace.json`. Keep the `version` in its own `.claude-plugin/plugin.json` current.
-- `mise run test` (`scripts/check.sh`) validates, unit-tests and type-checks every mod, plus the eval kernel's self-check. No model calls; CI runs the same.
+- `mise run test` (`scripts/check.sh`) validates, unit-tests and type-checks every mod, plus the code-mode kernel's self-check. No model calls; CI runs the same.
 - `e2e/run.sh [suite…]` runs real `claude` sessions with the mods loaded. It makes model calls, so it runs by hand, not in CI.
 - Try a change in a session with `claude --plugin-dir plugins/<mod>`. The first load lays the mod's types into `.claude-plugin/types/`, which the type check needs.

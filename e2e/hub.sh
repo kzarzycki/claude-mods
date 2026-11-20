@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/lib.sh"
 T=$(mktemp -d)
-# One interactive session: a resumed process starts with no subagents of its own. eval-kernel spawns
+# One interactive session: a resumed process starts with no subagents of its own. code-mode spawns
 # the subagent so the run doesn't depend on the model choosing to; the hub sees it like any other.
 cd "$ROOT"
-H=(--plugin-dir "$PLUGINS/agent-hub" --plugin-dir "$PLUGINS/eval-kernel")
-claude_tty "$T/1.log" 25 "/eval await agent('Reply with only the word HUBOK. Do not use tools.', { description: 'hub-probe', model: 'sonnet' })" "/hub list" -- "${H[@]}"
+H=(--plugin-dir "$PLUGINS/agent-hub" --plugin-dir "$PLUGINS/code-mode")
+claude_tty "$T/1.log" 25 "/repl await agent('Reply with only the word HUBOK. Do not use tools.', { description: 'hub-probe', model: 'sonnet' })" "/hub list" -- "${H[@]}"
 expect "the probe subagent ran" "$T/1.log" 'HUBOK'
 # The captured terminal drops the spaces between columns, so match loosely.
 expect "/hub lists it with status, model, turns and tokens" "$T/1.log" 'agent-hub: ?[0-9a-f]+ *completed *claude-sonnet[^ ]* *1 *turns *[1-9][0-9]+'
