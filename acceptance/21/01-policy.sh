@@ -17,8 +17,8 @@ import gatekeeper as g
 s = g.settings(g.Policy(pathlib.Path("docs/agents/gatekeeper.md").read_text()))
 assert s["spec"] == {"auto": True}, s["spec"]
 assert s["levels"] == {"high": {"spec": "policy", "merge": "gates"}}, s["levels"]
-assert "docs/agents/gatekeeper.md" in s["risk"]["paths"], s["risk"]
+assert set(s["risk"]["paths"]) == {".github/**", "CODEOWNERS", "docs/agents/loop.md", "docs/agents/gatekeeper.md"}, s["risk"]
 assert s["risk"]["verifier"] is True, s["risk"]
 assert "critical_paths" not in s["risk"], s["risk"]
-print("policy: spec.auto true, high {policy, gates}, critical default, gatekeeper.md a risk path")
+print("policy: spec.auto true, high {policy, gates}, critical default, risk paths kept plus gatekeeper.md")
 PY

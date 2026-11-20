@@ -47,8 +47,9 @@ this loop.
 
 The `risk` rule decides what shows as `risk:high`. `verifier: true` rates a
 change high when a verifier pass said anything but `Risk: low`, until a later
-`Scope: full` pass says `Risk: low`; a low pass on only a delta since then
-leaves it high. The paths rate high on their own: CI's workflows and rulesets under
+`Scope: full` pass from the same verifier family (Claude or Codex) says
+`Risk: low`; each family's history counts on its own, and a low pass on only a
+delta since then leaves it high. The paths rate high on their own: CI's workflows and rulesets under
 `.github/`, `CODEOWNERS`, this file and gatekeeper.md, since each decides what
 the gates require and who approves. `risk` also takes `labels` (such as
 `size:XL` or `area:<name>`, one per line) and `always: true`. `cap: <n>` under
