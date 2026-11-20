@@ -26,7 +26,7 @@ refuses a brief left with an empty `` `` `` span. Exit 0 prints the report path.
 prints the reason and the child's last message; for a session that failed, also its
 `last_task_error` and its runner log. With a verifier's role file, the report
 counts only once it has its `SATISFIED:` line, so a report written in stages does not end
-the wait early. Any report counts only once the child's turn has ended and the file is
+the wait early. `wait` takes only a report written after the newest message the session was given (its brief, a `send` or relay), so a file left by an earlier run is not returned at once. Any report counts only once the child's turn has ended and the file is
 unchanged since, which takes 30 seconds out of its turn at every look (a session can read idle
 mid-turn), and is read again before `run` returns it: until then a child can rewrite it (a
 verifier revising its verdict). Omnigent can lose a turn end and leave the session
@@ -67,7 +67,7 @@ time to compare.
 server refuses an ACP session that names no model, else its harness's default (Codex:
 `~/.codex/config.toml`), a verifier included. `start` refuses a model the agent's harness doesn't list on the host the child runs on
 (`GET /v1/hosts/<host>/harnesses/<harness>/model-options`: each row's `id` and `model`, so `sonnet` and
-`claude-sonnet-5-5` both pass), naming the ids it does, and one it can't check because the list doesn't load (an ACP harness has no host list: `start` passes the id on, saying so):
+`claude-sonnet-5-5` both pass), naming the ids it does, refuses a Codex model (`gpt-<generation>-<tier>`) when the list has a newer generation, naming it (`--allow-older-model` for a deliberate pin), and one it can't check because the list doesn't load (an ACP harness has no host list: `start` passes the id on, saying so):
 Omnigent launches an unlisted id on the harness default with no error. Pass `--model` on every start: the owner's model, the project's, else one fit for the job (engineering-loop SKILL.md, Models). A
 tier the project names resolves against the family's lineup (engineering-loop SKILL.md, Models): Codex lists
 its models in `~/.codex/models_cache.json`, each `slug` naming its generation and its `description` its role; a Claude Code
@@ -122,6 +122,14 @@ not checked. A chief of staff the owner starts in the UI gets no flag. To give i
 `autoCompactWindow` in its project's `.claude/settings.json`: it outranks the user's
 `autoCompactWindow`, though not the environment variable.
 
+**Lead model.** `start --top-level` of a Claude lead reads the project's `Lead model: <tier> for
+<condition>` line (under the engineering loop, in loop.md) once, on the lead's host, with the
+`Lead autocompact:` line. When the issues the brief names (`#N` or an issue URL; their labels come
+from `gh`) match the condition (`size:<S> or smaller`, or a bare label), the lead starts on the
+tier's alias: `frontier` Fable, `top` Opus, `mid` Sonnet, `small` Haiku. `--model` and
+`OMNIGENT_MODEL_CLAUDE` outrank it; a brief naming no issue, a size-less issue, a Codex lead or no
+line starts as configured. A tier or condition it can't parse fails the start before a session exists.
+
 **Other agents.** `claude` and `codex` are aliases for the native agents; any other registered
 agent's name or id starts that agent, found among the server's agents, then the caller's own
 (`scope=user`). `claude` and `codex` take the server's native agent, though the UI may register a
@@ -143,19 +151,20 @@ in the model of its own settings (`Gemini 3.8 Flash (Low)`), which Omnigent copi
 session, so the launcher passes none. On another host agy takes the brief as a file there too, written through the host's file API: the render check it makes of a pasted first line fails on a long inline paste, which scrolls the line away. `--verifier-route gemini` (or `$OMNIGENT_VERIFIER_ROUTE`) on a verifier start picks this agent in bypass mode, and `--verifier-route claude` a same-family Claude of another `--model` than the required `--author-model`: engineering-loop's lead.md, Verifier route, says when. An unknown name fails before a session is created. The flag without `--role <skills>/engineering-loop/verifier.md` is refused the same way, since the route would otherwise be dropped silently; `$OMNIGENT_VERIFIER_ROUTE` alone is not refused, as a host may export it for every start.
 
 **Cloud workers.** A worker whose tools run in a cloud VM can't write a file on this host,
-so `run` and `start` take `--pr <n>`: the preamble then has it post its report as one comment
+so `run` and `start` take `--pr <n>` (or `--pr owner/repo#<n>` from a directory that isn't a checkout; a bare `<n>` reads a checkout `--workspace`, else the current directory, and an unresolvable repository is refused before any session exists; `wait`, `send` and `reap --pr` take the same form): the preamble then has it post its report as one comment
 on PR n through REST (`gh api repos/{owner}/{repo}/issues/<n>/comments`, since GitHub's
 GraphQL API, and so `gh pr comment`, answers 403 in the VM), naming no host, path or session,
 and end its turn with only the comment's URL. A cloud session can't create a release or upload any binary through GitHub (creating a release answers HTTP 403, and its GitHub proxy answers HTTP 415 to any body that isn't `application/json`), but it can push branches, so a build output it must hand over goes on a branch or is built where it's used. `run` and `start` refuse `--pr` to an agent whose harness isn't
 `acp:claude-cloud`, naming `claude-cloud`, before any session exists: a native worker given it
 would run its build on this host, where a heavy one starves every other session. A cloud session (harness `acp:claude-cloud`)
 runs in the environment its workspace's untracked `.claude/settings.local.json` names in
-`remote.defaultEnvironmentId`, so before creating one on this host `start` and `run` copy a
-worktree's missing pin from its main checkout (keeping the file's other settings) and refuse
-when neither has one. They refuse a local agent in a main checkout whose own file names the pin, naming
+`remote.defaultEnvironmentId`, so before creating one on this host `start` and `run` pin it
+(keeping the file's other settings) as Cloud environments, below, says, and refuse when no
+environment resolves. They refuse a local agent in a main checkout whose own file names the pin, naming
 `claude-cloud` and a worktree as the routes: that checkout is where cloud sessions launch from,
 and a local agent working there switches its branch under every later start. A worktree is not that
-checkout, so a local agent there is accepted. In a worktree, though, `claude --cloud` takes the main checkout's pin when that checkout has one, so a worktree pinned to another environment would silently run that one's setup script and variables: `start`, `run` and `launch-dir` refuse such a worktree before any session exists, naming both pins and the two ways out (repin the main checkout, or launch from a clone, `launch-dir --clone`). A launch dir needs no checked-out files: nothing on the cloud path reads them (the bridge checks for a git repo, the CLI bundles it and reads the pin and the folder trust). `launch-dir <remote> <branch> <env-id> <path>` makes one with the pin and a `tmp/loop/`, a few dozen MB instead of a full checkout: run inside a checkout of the same repository (a remote with the same host, in any case, and the same path, in the same case) it is a `git worktree add --no-checkout` of that checkout (on a branch of its own, `launch/<folder>`), which inherits the checkout's folder trust (Claude Code keys a worktree's trust on the main worktree git lists first, which for a `--separate-git-dir` checkout is the git dir, not the checkout), since Claude Code trusts by path and a separate clone, even inside a trusted folder, is untrusted; anywhere else, or with `--clone`, it is a blobless `--no-checkout` clone with HEAD on the branch. It prints whether the new folder is trusted. `--trust` also writes the folder-trust entry in the user's Claude config, which is the user's call and never done otherwise. `start` for a `claude-cloud` agent refuses an untrusted launch dir before any session exists, naming the folder and the two ways out (re-run `launch-dir` from a trusted checkout, or `launch-dir --trust` as the user's decision), since the bridge fails with "has not trusted" only after the session is created. `pin_environment` accepts such a clone with its own pin and refuses one without, naming the helper. `start --pr <n>` on a `claude-cloud` agent points the launch dir's HEAD at the PR's branch (fetching it) without checking files out, and leaves a directory with a working tree alone. It fetches the PR's own ref (`refs/pull/<n>/head`, so a fork's branch works), reads the PR from the launch dir's repository, and runs git where the launch dir is: a `start` for a workspace on another host leaves its HEAD to that host's own `start`.
+checkout, so a local agent there is accepted. For a workspace on another host `start` finds the checkout root through the host's listing and reads the same two files (`.claude/settings.local.json`, `.git`) through a live session there, and refuses a pinned main checkout the same way; a file the listing shows but the read can't give (a 404 from an older host, no live session, not JSON, a failed listing) prints one stderr line and the start goes on. In a worktree, though, `claude --cloud` takes the main checkout's pin when that checkout has one, so a worktree pinned to another environment would silently run that one's setup script and variables: `start`, `run` and `launch-dir` refuse such a worktree before any session exists, naming both pins and the two ways out (repin the main checkout, or launch from a clone, `launch-dir --clone`). A launch dir needs no checked-out files: nothing on the cloud path reads them (the bridge checks for a git repo, the CLI bundles it and reads the pin and the folder trust). `launch-dir <remote> <branch> [<env-id>] <path>` makes one with the pin (an id given, else the one Cloud environments resolves) and a `tmp/loop/`, a few dozen MB instead of a full checkout: run inside a checkout of the same repository (a remote with the same host, in any case, and the same path, in the same case) it is a `git worktree add --no-checkout` of that checkout (on a branch of its own, `launch/<folder>`), which inherits the checkout's folder trust (Claude Code keys a worktree's trust on the main worktree git lists first, which for a `--separate-git-dir` checkout is the git dir, not the checkout), since Claude Code trusts by path and a separate clone, even inside a trusted folder, is untrusted; anywhere else, or with `--clone`, it is a blobless `--no-checkout` clone with HEAD on the branch. It prints whether the new folder is trusted. `--trust` also writes the folder-trust entry in the user's Claude config, which is the user's call and never done otherwise. `start` for a `claude-cloud` agent refuses an untrusted launch dir before any session exists, naming the folder and the two ways out (re-run `launch-dir` from a trusted checkout, or `launch-dir --trust` as the user's decision), since the bridge fails with "has not trusted" only after the session is created. `pin_environment` accepts such a clone with its own pin, and one without when an environment resolves; else it refuses, naming the helper. `start --pr <n>` on a `claude-cloud` agent points the launch dir's HEAD at the PR's branch (fetching it) without checking files out, and leaves a directory with a working tree alone. It fetches the PR's own ref (`refs/pull/<n>/head`, so a fork's branch works), reads the PR from the launch dir's repository, and runs git where the launch dir is: a `start` for a workspace on another host leaves its HEAD to that host's own `start`.
+`claude-cloud-run [--checkout DIR] [--timeout S] -- <command...>` is a lead's own heavy run in one call (engineering-loop's SKILL.md, Where heavy steps run): it runs one shell command in a Claude cloud session on the checkout's HEAD (default: this directory) and exits with the command's own code, printing the report path. One word after `--` is a shell command as written; several are joined as argv. Before any session exists it refuses (exit 125) a checkout with tracked changes, a detached HEAD, or a HEAD its branch's remote doesn't hold, naming `git push`, since the session clones from the remote. It keeps one launch dir per checkout and branch, `<main checkout>/.worktrees/claude-cloud-run-<branch>`: `launch-dir` makes it the first time (the environment resolved as `launch-dir` resolves it), and later runs fetch the branch and point its HEAD there, as `start --pr` does. It writes the brief itself (check out the exact commit, run the command detached, report an `EXIT: <n>` line, the summary line and every failure) and runs `run <the Cloud worker line's agent, else claude-cloud> ... --workspace <launch dir> --no-keep --model haiku --permission-mode auto` (`$OMNIGENT_MODEL_CLAUDE_CLOUD_RUN` names another model), taking the exit code from the report's `EXIT:` line. When the cloud route fails (the launch refused, setup failing, out of quota, no report, no `EXIT:` line) it exits 125, its own code and never the command's, and prints the reason and the host fallback, `LOOP_HOST_RUN=<reason> <command>`. The engineering pack's hook (`hooks/heavy_run_guard.py`) refuses a heavy run on a host with this call for that exact command, where `RUNNER_SERVER_URL` names an Omnigent server (without one it allows the run with a one-line notice); a child started on a host (any harness but the cloud one, never a top-level lead) gets one preamble line telling it to prefix its heavy runs with `LOOP_HOST_RUN=placed`, since its placement already chose the host.
 `wait` (and so `run`) with `--pr <n>` fetches
 the comment on PR n that the turn's last message links (`gh api`) and writes its body to the
 report path, so whatever reads the report reads a file as for any child. The worker pushes
@@ -187,8 +196,7 @@ workspace is, since the report is the file `wait` writes here, and takes only a 
 created after the report already there, so a turn that ends on the old comment's link, or on
 none, gets the nudge and then fails. `--pr` arms no supervisor registry, since the supervisor reads the report file and
 would revive and nudge the worker toward a path it can't write: re-attach a `run` that died
-with `wait <session> <report> --pr <n>`. A `--role` path names the role file by its path in
-the repo, since the VM has the checkout but not this host's paths. The preamble also tells the
+with `wait <session> <report> --pr <n>`. The preamble also tells the
 worker that its checkout is the branch checked out in the workspace the session started from,
 not necessarily the PR's; that a foreground command there stops at 10 minutes, so a long one
 runs detached and is polled within the same turn, is the role file's long-run rule. It forbids an interactive
@@ -197,11 +205,41 @@ and ends each commit message with the co-author line and no session link, since 
 reaches a public repository. A host without the cloud
 harness starts the worker on one that has it, with `start --top-level --host <host> --pr <n>`
 (Top-level leads, `--host`): `--pr` gives the PR preamble to a top-level session too.
-Every `acp:claude-cloud` session's preamble, lead or worker, with or without `--pr`, also says
+A cloud child given `--role` gets the role file's text in its brief, inside a `<role-file>` block, not its path: the VM has none of this host's paths, and a target repo without the pack installed holds no copy, so a path would read nothing. The skill's other files that the role names may not be in the checkout either; the brief says so.
+Every `acp:claude-cloud` session's preamble, lead or worker, with or without `--pr`, says how to open a
+PR when its brief or role asks for one: `curl` to `https://api.github.com/repos/<owner>/<repo>/pulls` with a
+`Content-Type: application/json` header. The VM's HTTPS proxy authenticates that host as the GitHub App, so no
+token is set, while the GitHub connector's host is not allowed there. It also says
 never to write under `.git/`, since a write there waits on a permission prompt nobody in the
 cloud answers, and that `tmp/loop/` is scratch, never committed: a fresh clone lacks the host's
 `.git/info/exclude`, so the project's own `.gitignore` names `tmp/loop/`, and a session that
 sees its report untracked has nothing to "fix".
+It closes with the owner's standing branch grant (`CLOUD_BRANCHES`): new `claude/ready-*` branches, one
+per PR, besides the one the session started on; no force-push, no deleting a branch it didn't create, nothing
+pushed to `main` or outside `claude/`. A cloud session takes a push grant only from its first user message and
+refuses a later relayed one, so a lead building several PRs gets its branches only this way.
+
+**Cloud environments.** Which claude.ai environment a cloud session runs in is the project's
+loop.md line `Cloud worker: <agent>, gate <task>, env <name>`; an environment id belongs to one
+claude.ai account, so loop.md names it and each host resolves the name. No `Cloud worker:` line
+means `claude-cloud` with the policy's gate, `Cloud worker: none` (a reason may follow) means host
+workers, and a line keeps the meaning it had; `env <name>` is optional. A cloud `start` resolves
+the line's `env` on this host's Claude Code login (`GET /v1/environment_providers`) and pins its
+id, replacing another pin; with no `env` it keeps the workspace's pin, else copies its main
+checkout's, else pins the environment named after the repository (its `origin` remote), else the
+account's `Default`. `launch-dir` given no id resolves the same way from the branch's committed
+loop.md and the remote's name, and takes back what it made when nothing resolves. A name with no
+environment is refused before any session exists, naming `claude-cloud:setup` and `claude-cloud-env`. `claude-cloud-env <checkout>` (alias `cloud-env`) makes
+that environment (the line's `env`, else the repository's name) with the checkout's committed
+`.claude/claude-cloud-setup.sh` (else the older `.claude/cloud-setup.sh`) as its setup script and the committed
+`.claude/claude-cloud-environment.json`'s network and variables, or, when it exists, replaces only those (`native.md` has `claude_cloud.py setup`, the same step with secrets and a proof)
+(`POST /v1/environment_providers/<id>` with the config it read and `config.init_script` changed,
+no `kind`), so its variables, a seeded login among them, stay as they are. It sends no secret,
+and the login's token goes into request headers only, never an argument list, a log or the
+output, which masks the environment's variables in a refusal the server echoes. Run it once on a
+host whose login has no environment for the project, and again after the setup script changes.
+The client is `scripts/claude_environments.py`, which engineering-loop's `cloud_verifier.py seed`
+also uses.
 
 **Author family.** `--author <claude|codex>` names the family that wrote what the child
 reviews. When it matches the child's own family the script refuses unless `--same-family`
@@ -210,6 +248,13 @@ reviewer must be of the other family is the caller's policy.
 
 `start` and `wait <session> <report>` are the two halves, for a start whose wait runs
 elsewhere.
+
+**Cold start.** `start` (after waiting up to `COLD_START_SECONDS`, 20 s, for a first turn), `wait` and
+`run` print on stderr `cold start: <n|unknown> s to first turn`: the seconds from the session record's
+`created_at` (set by the create call) to the `created_at` of its first assistant item (a message or
+tool call of the assistant), read from the session's oldest items so a long session still times it.
+A time the API does not give, or a session with no turn yet, prints
+`unknown`, never 0; `wait` prints it again once the turn exists. The lead's log keeps the line.
 
 **Signature.** `python3 scripts/omnigent_agent.py signature` prints `<harness>/<model>/<effort>` of the session it
 runs in, read at runtime (Codex's rollout, Claude Code's `$CLAUDE_EFFORT` and transcript), so it holds
@@ -338,6 +383,7 @@ What the script guards against, so do not hand-roll it with `sys_session_*`:
 - A send answers `queued`/`launching` even when the brief never arrives. The script
   counts a start only once that one line is a user message in the history, and otherwise
   abandons the session and retries once with a fresh one, titled `<title>-r<n>`.
+  Before abandoning it, it polls one more `HTTP_SECONDS` (a slow server takes a POST that timed out client-side later, so at the deadline the brief is often neither an item nor pending yet) and keeps the session if the brief, or any item other than `resource_event` and `error`, shows up; one still empty after that is abandoned. While the brief sits in the session's pending inputs the grace restarts, so a pending brief holds the session. `start`'s `--confirm-seconds` defaults to 300 s (`send`'s stays 60): a busy host can take that long to show the brief.
   A signal (a caller's `timeout`) while it confirms leaves the session unarchived, since the
   brief may be in: it prints the session id on stdout and exits with the signal's code, and
   `status <sid>` says whether to wait on that session or start another.
@@ -422,13 +468,16 @@ there and copies it to `tmp/loop/<name>` here, printing that path for `approvals
 the check that a child left no tracked change is skipped, with a line saying so, since the file
 API runs no git and the verifier's worktree is its own.
 
+A verifier `start` (`--role verifier.md`) whose brief has a `- Reviewed head: <sha>` line refuses, before any session exists, a `--workspace` whose HEAD is another commit, naming both and `git -C <ws> checkout --detach <sha>`. On another host the HEAD is read through the file API of a live session on that host; a HEAD that can't be read there or here (no live session, not a checkout) prints one stderr line saying the check was skipped, never a silent pass. With `--pr` the workspace was already moved to the PR's current head, so a mismatch asks for a new brief (`approvals.py brief <pr>`) instead. A brief with no such line, or a `--far` brief (it makes its own worktree), starts as before.
+
 **Relaying to a lead.** `python3 scripts/omnigent_agent.py relay <session> <message-file>`
 posts a message that owes no report, such as the owner's words for a top-level lead, and
 returns at once. It reads no file but the message, so the lead may run on another host.
 Exit 0: the message is in the lead's history, or a copy it has not replied to already is, so a
-rerun sends no second one. Exit 5: queued, held until the lead's current step ends (a long
-foreground command) or until a person answers the approval prompt it prints; it lands then
-with no further call. Exit 4: not deliverable, and why (archived, a revive that failed, or
+rerun sends no second one. A message held only by the lead's current step (a long
+foreground command) is exit 0 too: the line says `queued until the session's current step
+ends` and it lands then, with no further call, and a rerun sends no second copy. Exit 5: queued
+behind an approval prompt it prints, until a person answers it; it lands then. Exit 4: not deliverable, and why (archived, a revive that failed, or
 neither pending nor in the history within `--confirm-seconds`, default 60). Exit 7: `SENT_UNCONFIRMED`, the message was posted and a later read (the poll that confirms it) failed, so it is out and unconfirmed; run the command again, it finds the copy and posts no second one (a failure before the post stays exit 1). A reaped runner is
 revived in place first, as `send` does. A question card (`sys_ask_user_question`)
 leaves the lead free: a plain `relay` is delivered beside it (exit 0), its line names the card
@@ -458,7 +507,7 @@ is only in a posted message, or nowhere. The server stamps an API post with the 
 agent that posts an unmarked message into the session on purpose; that needs the server to stamp
 each item's origin.
 
-**Broadcasting.** `python3 scripts/omnigent_agent.py broadcast <message-file> [--registry FILE]
+**Broadcasting.** Only a stop order is posted live: a rule change is added with `broadcast <message-file> --decisions FILE` as a bullet under `## Chief of staff decisions` in that file (the project file loop.md's `Standing decisions:` line names, which leads read each turn) and posted to no session, since each live post is a wake turn re-reading about 150k tokens of context per lead; `--stop` and `--decisions` exclude each other. `python3 scripts/omnigent_agent.py broadcast <message-file> --stop [--registry FILE]
 [--active-hours N] [--project NAME ...] [--host NAME ...] [--include ID ...] [--exclude ID ...]
 [--dry-run]` relays one message to every followed lead in the registry (default
 `$OMNIGENT_SUPERVISE_REGISTRY`), each `--include` session and, with `--active-hours`, every
@@ -615,8 +664,9 @@ marked `direct` is a checkout of (a direct lead's owner reads its landings in it
 `STILL WORKING` wait, tells no one, and a step owed after a landing (a restart, a rebuild, a board
 update) then waits. It reads each lead's origin once through the file API (`.git/config`, or a
 worktree's common dir), so on any host, and the head with `gh api repos/<owner>/<name>/commits/HEAD`
-at most once a minute per repo. A head that moved raises one `landed` event per repo and new head,
-on the repo's first such lead in the registry: `<owner>/<name>: its default branch moved to <sha>; merged
+at most once a minute per repo. A head that moved is told only to a lead whose wait names a merged PR or whose `omni.pr` label is one (a `news` event the
+lead acts on; a `landed` act event to the supervisor when that lead waits on it), and is otherwise only logged and
+stored, so the chief of staff gets no empty turn. The line reads: `<owner>/<name>: its default branch moved to <sha>; merged
 since <old sha>: #12, #13` (the `(#N)` ending each commit's subject, or a `Merge pull request #N`), naming
 only the PRs the GitHub login the supervisor runs as opened, the one leads open theirs with. A move with
 none (a release bot's bump, a teammate's merge, a commit naming no PR) only stores the head; a PR whose
@@ -624,7 +674,7 @@ author can't be read counts, named so, since a missed landing costs more than on
 The first head seen for a repo is only stored, so a start reports no old merge; with `--console` it
 is kept in the state (`heads`), so a restart reports a landing made while it was down, and only
 that one. A workspace outside a checkout is not watched; a failed read is logged once and tried
-again. The lead's words play no part, so `route` and `lead.md` stay as they are.
+again. The event is for whoever owes the step after a landing (the chief of staff under `--console`), not for other leads: they read the new base on their next fetch, since a notice wakes each with its whole context. The lead's words play no part, so `route` and `lead.md` stay as they are.
 
 **`--console`**, the chief of staff's console, adds what its supervisor needs and no other: a
 state file, an events log, status labels, a progress deadline, settled events kept across
@@ -652,7 +702,7 @@ wait comes from the lead's last message: `parked` for a `PARKED` ending, the thi
 WORKING` names (`verifier`, `CI`, `worker`, `lead`, `merge`, a child's session id, or a
 background task id such as `bz3jp5aod`, `b` and 8 lowercase letters and digits with one digit at
 least, opening it or after `on`/`for`), else
-`unknown`. A `STILL WORKING` naming a UTC time (`until 2026-10-21T23:17Z`, `2026-10-21 23:17
+`unknown`. A last line `Waits: supervisor|session <id>|#<pr>|CI|until <UTC>|<Actions run URL>` (printed by `omnigent_agent.py wait-on`, which refuses any other form, and a bare `#<pr>` that this repo has no PR or issue for; a run's end is news once, and a line that does not parse is told to its lead once, with these forms) is read first and exactly, and a line that does not parse still decides alone: a wait on the supervisor only when it names it (supervisor, CoS or chief of staff), else none, so prose and a `CoS:` footer decide nothing; without one, prose decides: any single 32-hex id in the wait paragraph is a named wait, and `CoS`, `chief of staff` or a `CoS:` line count as waiting on the supervisor like `pm`. A `STILL WORKING` naming a UTC time (`until 2026-10-21T23:17Z`, `2026-10-21 23:17
 UTC`) is a timed wait, `until <time>`: no deadline before that time plus 20 minutes, then the
 named-wait rule. A last message that
 is only a report's path takes its ending and wait from the report's first line, read once per
@@ -688,7 +738,8 @@ offline while idle raises nothing.
 
 | Event | Settled by | What happens |
 |---|---|---|
-| `landed`: the default branch of a repo the followed, non-direct leads work in moved with a PR of theirs | rule | act, one per repo and new head, naming the new sha and the PRs merged since |
+| a default branch of a repo the followed, non-direct leads work in moved with a PR a lead's wait names or owns | rule | tell that lead (act, to the supervisor, when the lead waits on it), naming the new sha and the PRs merged since; no other lead and not the chief of staff |
+| a PR or session a lead's wait names settled, or a session it started reached a final state | rule | tell that lead within a minute, read from GitHub and the session; a set tells on its first failure or its last end |
 | `archived` | rule | its line and state entry dropped; no post |
 | `PARKED` after a `Park: ` message from the manager (without one: act, since the lead parked itself), a `STILL WORKING` naming its wait, an exact repeat of the lead's last event | rule | recorded; no post |
 | a quiet end (no ending, no named wait) | small model | mid-work: recorded; stalled: the nudge; for the owner: queued for them; no answer (a failure, no allowance left): act |
@@ -732,7 +783,8 @@ a later write failed keeps its place in the hour, and the retry acts on its answ
 What needs the notified session waits in the state's `attention` queue and goes out as one post,
 at most one per 5 minutes (`rate.next_post_at`, written before the post), so a restart or a
 successor keeps the window: `Supervisor [act] b-<id>: <n> events`, or `[owner]` when one is the
-owner's, one line per event with why, then each lead's status row and the first 5 lines of its
+owner's (an owner item with the same request, a prompt's text or a turn end's last message, as the last one raised for that session, kept in the
+lead's `owner_item`, is `[info]`, which wakes no one), one line per event with why, then each lead's status row and the first 5 lines of its
 report (read through the file API, from any host; a failed read is noted). A row gives a turn end
 (`turn ended: <last line>`) once per turn, keyed on its last message's id (else its time) in the
 lead's `told_turn`, and never one written before the run that first saw the lead (`seen_from`), so

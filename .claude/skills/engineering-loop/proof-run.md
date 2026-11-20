@@ -1,13 +1,13 @@
 # Proof run
 
-A brief the lead fills in and sends to a cloud child (`run --pr <n>`, SKILL.md, Cloud worker)
-when a verifier asks for its runs because the host's heavy slot was not free, or its sandbox refused a run (verifier.md,
+A brief the lead fills in and sends to a child placed as SKILL.md, Where heavy steps run says
+(a cloud child by default: `run --pr <n>`, SKILL.md, Cloud worker) when a verifier asks for its runs because the host's heavy slot was not free, or its sandbox refused a run (verifier.md,
 A run the sandbox refuses). The child returns the logs; the verifier reads them as its own. The undo
 and redo commands are the ones verifier.md, Mutation-check the new tests gives for its
 patches, copied from the verifier's question, since the template would drift from that
 paragraph if it named them itself. A verifier's question lists every run its pass needs, and the
-brief takes them all: one list, answered together in one heavy-slot hold on one host that can make
-each, not one brief per run.
+brief takes them all: one list, answered together on one machine that can make each (on a
+host, in one heavy-slot hold), not one brief per run.
 
 ```text
 Check out PR #<n> at <head> (`git fetch origin pull/<n>/head && git checkout --detach <head>`)
@@ -28,6 +28,6 @@ listed (an acceptance line, an instance or device proof, a gate step), each in i
    empty, since a run that leaves the tree changed taints the next one.
 
 Write each log to `tmp/loop/<name>.log` and name each in your one report comment on PR
-#<n>, so it comes back as a file block and one that would pass the comment's size limit is
+#<n> (a short result and the log names in view, the rest under `<details>`, as github.md's Comment shape says), so it comes back as a file block and one that would pass the comment's size limit is
 cut to its last lines.
 ```

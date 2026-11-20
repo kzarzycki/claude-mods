@@ -12,7 +12,7 @@ dependencies:
   apm:
 
     - git: kzarzycki/agent-skills/engineering
-      ref: engineering-v0.27.0
+      ref: engineering-v0.33.2
 
 
   mcp: []

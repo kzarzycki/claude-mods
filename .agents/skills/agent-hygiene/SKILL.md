@@ -71,7 +71,7 @@ A round outside a schedule (a low disk, a pty pool near its limit) is the same s
     generated and not to be edited, an `*.xcodeproj/` beside the `project.yml` XcodeGen
     rebuilds it from); a `*.log`; test output (`test-results/`, `playwright-report/`,
     `snapshot_failures/`); a built `static/web-ui/`; a file byte-identical to the main
-    checkout's copy at the same path; a `.terraform/`; a `.claude/settings.local.json`
+    checkout's copy at the same path; a `.terraform/`; an ignored directory holding no file (only empty directories); `.apm-local/`; a `.claude/settings.local.json`
     holding only the cloud-environment pin (`remote.defaultEnvironmentId`); anything under
     `logs/`, `tmp/` or `.bootstrap-state/`; or what `apm.lock.yaml` lists as deployed by
     `apm install`. `git worktree remove` deletes ignored files, so a `.env`, a hand-written
@@ -116,11 +116,13 @@ shell), a stale pack and drift.
 
 ## What it tells the chief of staff
 
-The run posts into the chief of staff's Omnigent session (project `Chief of staff`, label
-`omni.role=cos`), through the account's Omnigent CLI logins; a question about a repo's worktree
+The run posts into the chief of staff's Omnigent session (the session labelled
+`omni.role=cos`, in any project), through the account's Omnigent CLI logins; a question about a repo's worktree
 goes instead to that repo's project manager (`omni.role=pm`, `omni.repos` naming the repo), the
-chief of staff when none is live, and so does a drift finding whose path is inside that repo's checkout. The server in
-`~/.omnigent/config.yaml` first, then every other server the account is logged in to. It
+chief of staff when none is live, and so does a drift finding whose path is inside that repo's checkout. Only one server is asked: `server:` in
+`~/.omnigent/config.yaml`, else `RUNNER_SERVER_URL`, else the CLI's default. Another logged-in server may be another
+account's, so a configured server with no chief of staff, or one that can't be reached, fails the run (exit 1, one
+log line naming the server) instead. It
 posts in four cases, each question or finding once (`~/.local/state/agent-hygiene/asked`),
 at most 30 per message:
 

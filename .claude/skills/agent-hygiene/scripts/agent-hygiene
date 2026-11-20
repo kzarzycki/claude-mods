@@ -13,7 +13,7 @@ Steps, each skipped when in use:
                 inside one, judged with its PR, innermost first: removed with
                 `git worktree remove` when clean (untracked *.lock files aside, also in an untracked dir), pushed (or in the PR head), unlocked, no process is in
                 them, their tmp/ and .bootstrap-state/ (run reports) are a day old and every ignored file in them
-                is an environment, build output (CACHEDIR.TAG, XcodeGen's .xcodeproj, a file marked generated), a log, test output, a built static/web-ui, a copy of the main checkout's file, a run report or what
+                is an environment, an empty directory, `.apm-local/`, build output (CACHEDIR.TAG, XcodeGen's .xcodeproj, a file marked generated), a log, test output, a built static/web-ui, a copy of the main checkout's file, a run report or what
                 apm.lock.yaml says `apm install` deployed
   environments  .venv / node_modules beside their manifest, in a checkout under ~/dev that
                 no process uses and nothing changed in for --idle-days
@@ -29,6 +29,8 @@ VM or container images. What may be wanted is asked about instead, once, in the 
 session: a merged worktree kept for uncommitted work, an unpushed HEAD or ignored files that may
 not rebuild; simulator devices whose runtime is gone; staged ChatGPT updates; the dotagents checkout pinning another
 pack than its origin/main (a missed release); what `dotagents doctor` reports (drift).
+The chief of staff is the session labelled omni.role=cos on the one server the CLI uses (config.yaml's `server:`, else
+RUNNER_SERVER_URL, else the CLI default); no other logged-in server is tried, and a server with none, or unreachable, fails the run.
 Log: ~/.local/state/agent-hygiene/<UTC time>.log. Exit 0 done, 2 under the floor (the chief of staff
 was told), 1 a step, the process scan or the message failed. Without a process scan nothing is removed.
 """
@@ -46,7 +48,6 @@ import subprocess
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -112,7 +113,7 @@ def processes():
 
 
 # An Omnigent terminal wrapper: python, its flags, then the script as the first argument (a tmux server only names it later).
-WRAPPER = re.compile(r'^\S*python[\d.]*\s+(-\S+\s+)*\S*omnigent/terminals/program_status\.py\s')
+WRAPPER = re.compile(r'^\S*python[\d.]*\s+(-\S+\s+)*\S*omnigent/terminals/program_status\.py\s', re.I)
 # A plain, unescaped bridge dir ending .../claude-native/<id>; any other spelling (a space, a quote, a JSON escape) cannot be
 # read unambiguously from a flattened command line, so it does not parse and the wrapper is kept.
 BRIDGE_DIR = re.compile(r'--bridge-dir[\s"\',=]+((?:/[\w.-]+)+/(?:claude|codex)-native/[0-9a-f]+)(?=["\',\s\]}]|$)')
@@ -510,7 +511,7 @@ def worktrees(run, found, dev, procs, asks):
 DISPOSABLE = {'node_modules', '.venv', 'venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache',
               'build', 'dist', '.gradle', '.kotlin', '.cxx', '.next', '.turbo', 'target', 'DerivedData',
               'coverage', '.coverage', 'coverage.xml', '.testmondata', 'apm_modules', '.DS_Store', '.build',
-              '.terraform', 'test-results', 'playwright-report', 'snapshot_failures'}  # `terraform init` rebuilds it; a local terraform.tfstate sits beside it, not in it
+              '.terraform', 'test-results', 'playwright-report', 'snapshot_failures', '.apm-local'}  # `terraform init` rebuilds it; a local terraform.tfstate sits beside it, not in it
 ROUTES = {}  # a question about a repo's worktree -> that repo (owner/name), whose manager is asked
 GIT_ACTIVITY = ('HEAD', 'index', 'logs/HEAD', 'FETCH_HEAD')  # what a checkout, reset or fetch touches in the worktree's own git dir
 REPORT_DIRS = {'tmp', '.bootstrap-state'}  # run reports: kept while one changed in the last day
@@ -529,6 +530,9 @@ def disposable(status_line, checkout, main=None):
         return bool(REPORT_DIRS & dirs)
     return status_line.startswith('!! ') and (
         bool(DISPOSABLE & set(parts)) or bool(EVIDENCE_DIRS & dirs) or path.endswith(('.pyc', '.egg-info/', '.log'))
+        # an ignored directory holding no file, only empty directories: nothing in it to lose
+        or path.endswith('/') and (checkout / path).is_dir() and not (checkout / path).is_symlink()
+        and not any(files for _, _, files in os.walk(checkout / path))
         # a built web UI: a path suffix, so a tracked web-ui/ source dir is not matched
         or parts[-2:] == ('static', 'web-ui')
         # a copy of the main checkout's file at the same path; an ignored directory folded into one entry, every file in it
@@ -688,19 +692,23 @@ def environments(run, found, idle_days, procs):
                 run.say(f'removed env {env}: freed {(free() - before) / GB:.2f} GB')
 
 
-# {server: token} for config.yaml's servers first, then every other server this account has logged in to.
+# {server: token} for the servers named in argv that this account is logged in to.
 LOGINS = """import json, sys
-from omnigent.cli_auth import _token_file_path, load_token, refresh_stored_token
-try:
-    known = list(json.loads(_token_file_path().read_text()))
-except (OSError, ValueError, TypeError):
-    known = []
+from omnigent.cli_auth import load_token, refresh_stored_token
 tokens = {}
-for server in dict.fromkeys(s.rstrip('/') for s in sys.argv[1:] + known):
+for server in dict.fromkeys(s.rstrip('/') for s in sys.argv[1:]):
     token = load_token(server, min_remaining_seconds=180) or refresh_stored_token(server)
     if token:
         tokens[server] = token
 print(json.dumps(tokens))"""
+DEFAULT_SERVER = 'http://localhost:6767'  # the Omnigent CLI's own default
+
+
+def configured_server():
+    """The server the CLI uses: config.yaml's `server:`, else RUNNER_SERVER_URL, else the CLI default."""
+    config = HOME / '.omnigent/config.yaml'
+    found = re.findall(r'^server: *(\S+)', config.read_text(), re.M) if config.exists() else []
+    return (found[0] if found else os.environ.get('RUNNER_SERVER_URL') or DEFAULT_SERVER).rstrip('/')
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -721,58 +729,52 @@ def tell(text, repo=None):
     With ``repo`` (owner/name), that repo's project manager (``omni.role=pm``, ``omni.repos`` naming the
     repo's name or owner/name) gets it, and the chief of staff when none is live. Without, the chief of staff.
 
-    The session may live on another server than the CLI's default (an account's default may be
-    another one), so each server with a login is searched until one holds it."""
-    config = HOME / '.omnigent/config.yaml'
-    servers = re.findall(r'^server: *(\S+)', config.read_text(), re.M) if config.exists() else []
-    tokens = json.loads(subprocess.run([OMNIGENT_PYTHON, '-c', LOGINS, *reversed(servers)],
+    Only the configured server is asked (``configured_server()``): another account's server may be logged in on
+    this machine, and a server that answers with no chief of staff is a fact about it, not a reason to try another.
+    The RuntimeError names the server and what failed."""
+    server = configured_server()
+    tokens = json.loads(subprocess.run([OMNIGENT_PYTHON, '-c', LOGINS, server],
                                        text=True, capture_output=True, timeout=120).stdout or '{}')
-    if not tokens:
-        raise RuntimeError('no Omnigent login on this account')
-    missed, opener = [], urllib.request.build_opener(NoRedirect)
+    if not (token := tokens.get(server)):
+        raise RuntimeError(f'{server}: no Omnigent login on this account')
+    opener = urllib.request.build_opener(NoRedirect)
     names = {repo, repo.rsplit('/', 1)[-1]} if repo else set()
 
     def manages(session):
         return bool(names & set((session.get('labels') or {}).get('omni.repos', '').split(',')))
 
-    for role in ('pm', 'cos') if repo else ('cos',):
-        for server, token in tokens.items():
-            def api(method, path, body=None):
-                request = urllib.request.Request(server + path, method=method,
-                    data=None if body is None else json.dumps(body).encode(),
-                    headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
-                with opener.open(request, timeout=30) as response:
-                    return json.load(response)
+    def api(method, path, body=None):
+        request = urllib.request.Request(server + path, method=method,
+            data=None if body is None else json.dumps(body).encode(),
+            headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+        with opener.open(request, timeout=30) as response:
+            return json.load(response)
 
-            try:  # anything failing before the message goes means: try the next server
-                query = '' if role == 'pm' else '&project=' + urllib.parse.quote('Chief of staff')
-                listing = api('GET', '/v1/sessions?limit=100&sort_by=updated_at' + query)
-                cos = next((s['id'] for s in listing.get('data') or []
-                            if (s.get('labels') or {}).get('omni.role') == role and not s.get('archived')
-                            and (role == 'cos' or manages(s))), None)
-                if not cos:
-                    missed.append(f'{server}: none')
-                    continue
-                if not api('GET', f'/v1/sessions/{cos}').get('runner_online', True):
-                    api('POST', f'/v1/sessions/{cos}/events', {'type': 'retry_session', 'data': {}})  # a reaped runner
-                    for _ in range(30):
-                        time.sleep(4)
-                        if api('GET', f'/v1/sessions/{cos}').get('runner_online'):
-                            break
-            except Exception as error:  # noqa: BLE001 - any failure before the message: the next server
-                missed.append(f'{server}: {failure(error)}')  # unreachable, logged out, redirected, not Omnigent
+    for role in ('pm', 'cos') if repo else ('cos',):
+        try:
+            listing = api('GET', '/v1/sessions?limit=100&sort_by=updated_at')
+            cos = next((s['id'] for s in listing.get('data') or []
+                        if (s.get('labels') or {}).get('omni.role') == role and not s.get('archived')
+                        and (role == 'cos' or manages(s))), None)
+            if not cos:
                 continue
-            try:
-                api('POST', f'/v1/sessions/{cos}/events', {'type': 'message', 'data': {
-                    'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}})
-            except urllib.error.HTTPError as error:  # the server answered with a refusal: not delivered
-                missed.append(f'{server}: message refused: {failure(error)}')
-                continue
-            except Exception as error:  # a timeout or a dropped connection may have delivered it: no second copy
-                raise RuntimeError(f'{server}: the message may not have arrived: {failure(error)}') from None
-            return f'{cos} on {server}'
-    raise RuntimeError('no chief of staff session (project "Chief of staff", label omni.role=cos): '
-                       + '; '.join(missed))
+            if not api('GET', f'/v1/sessions/{cos}').get('runner_online', True):
+                api('POST', f'/v1/sessions/{cos}/events', {'type': 'retry_session', 'data': {}})  # a reaped runner
+                for _ in range(30):
+                    time.sleep(4)
+                    if api('GET', f'/v1/sessions/{cos}').get('runner_online'):
+                        break
+        except Exception as error:  # noqa: BLE001 - unreachable, logged out, redirected, not Omnigent
+            raise RuntimeError(f'{server}: {failure(error)}') from None
+        try:
+            api('POST', f'/v1/sessions/{cos}/events', {'type': 'message', 'data': {
+                'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}})
+        except urllib.error.HTTPError as error:  # the server answered with a refusal: not delivered
+            raise RuntimeError(f'{server}: message refused: {failure(error)}') from None
+        except Exception as error:  # a timeout or a dropped connection may have delivered it: no second copy
+            raise RuntimeError(f'{server}: the message may not have arrived: {failure(error)}') from None
+        return f'{cos} on {server}'
+    raise RuntimeError(f'{server}: no chief of staff session (label omni.role=cos)')
 
 
 def doctor(run):

@@ -53,7 +53,7 @@ LIVE = {1: "idle", 2: "running", 3: "waiting", 4: "failed"}
 # Flag thresholds: a flag fires at its threshold and stays quiet below it.
 SUBAGENTS = 25  # sub-agents in one root tree
 NESTED_CODEX = 6  # Codex's own sub-agents (sub_agent_name 'Codex') in one tree
-VERIFIER_PASS = 4  # an early warning, below engineering-loop's default cap of 5
+VERIFIER_PASS = 4  # a pass past engineering-loop's default cap of 3
 INHERITED_ITEMS = 500  # items a session created in the window inherited from a fork
 SUBSCRIBERS = 2  # sessions one target wakes when it ends a turn
 CRON_FAILURES = 3  # failed runs of one scheduled task in the window

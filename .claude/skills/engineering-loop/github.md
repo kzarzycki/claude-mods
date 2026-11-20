@@ -32,6 +32,33 @@ inside the repository: it infers the repo from the remote.
 
 Pull requests are not a triage request surface.
 
+## Comment shape
+
+Every comment, review body and issue comment an agent or a script writes opens with what a person reads in
+GitHub's UI, at most about three lines (what happened, what it needs, a link), and folds the rest:
+
+```
+<heading line a parser reads, if the comment has one>
+<one to three lines: what happened, what it needs, a link>
+
+<details><summary>Details</summary>
+
+<the fields, the log, the evidence>
+
+</details>
+```
+
+- A script builds it with `scripts/folding.py`'s `fold(heading, summary, details)`, and reads a comment back with
+  `machine(body)`: the heading, then the folded lines where they stood before folding, so `Approved: merge`, `By:`,
+  `Head:`, `Landed` and `Merge queue batch` parse the same folded or not (a comment posted before folding is
+  returned as it is). A new reader of a comment's key lines takes its body through `machine()`.
+- An agent writes the same shape by hand: the verdict's closing lines (`Head:`, `VERDICT:`, `SATISFIED:`, `Risk:`)
+  and a status's result and link stay in view, since the gate and the lead's wait read them line by line, and a long
+  log, a criteria list or a worker's report goes under `<details>`. A `## Spec`, `## Plan` or `## Demo` comment keeps
+  its heading first and its body unfolded, since the owner's approval names the spec's text by hash.
+- One fold, one level: a second block (a log's last lines) goes after the first, never inside it, so `machine()`
+  ends the first fold at the first `</details>`.
+
 ## Posting under a person's account
 
 Anything an agent writes under a person's GitHub account on a project that is not the

@@ -183,6 +183,7 @@ post that reaches you has already been through that, so the rows below that say 
 | A supervisor line, notice or `watch` says | You do |
 |---|---|
 | Turn ended (completed), `DONE` | One line to the owner with the result: PR, merge, issue. Send each lead that waits on this one, and was started without `start --after` (or under a supervisor without `--console`), a line of yours naming its result, the merge or that it ended without one, since nothing else wakes it; a lead started with `--after` is told by the supervisor, and a second line of yours would wake it twice. Then archive the lead once its report says it cleaned up (`reap <session>` with the registry, which drops its line first, so the supervisor posts no `archived` for it). |
+| `landed` (a repo's default branch moved) | Do the step owed after the landing (a restart, a rebuild, a board update) and tell no lead: each lead reads the new base on its next fetch, a lead waiting on that PR hears from its owner's `DONE` row, and every notice wakes a lead holding its whole context, about 150k tokens. |
 | Turn ended, `USER NEEDED` | When a standing decision delegates that kind of question and the answer is reversible, decide it as Authority says: `relay` your answer quoting the standing decision it rests on, and report it to the owner in one line. Otherwise put its question to the owner in one line, linked to the lead's session, and never answer it yourself, even when you think you know. You may add a fact from the board, marked as yours. |
 | Turn ended, `STILL WORKING`, with something pending | Send nothing, since the state file records what it waits on (Handover, Follow): its own worker, verifier or CI wakes it, another lead's merge reaches it through that lead's `DONE`, and a timed wait (`until <UTC time>`) raises no deadline before its time, then gets the supervisor's wake (`--console`, see above) or, without it, a `relay` from you once its time has passed. Tell the owner only when the turn changes the task, in one line naming the block or the new scope: it is blocked on something outside the lead, another lead's merge included, or its scope changed. |
 | Turn ended, `PARKED` after your `Park: ` message | Send nothing (the state file records it as parked, and its last message holds the next step): it is no stall and spends no nudge. Once the host has room, `relay` it a line to resume, one lead at a time. |
@@ -208,16 +209,16 @@ checking the host's capacity (Host load), as before.
 with where it was said, and at most one line of yours, marked as yours. Never paraphrase
 the owner. A lead acts on the owner's quoted words; your line is a colleague's note. Nudges,
 and the line to a lead that waits on another's result, go the same way. A message for every
-lead at once (a temporary rule) goes through `broadcast <message-file>` instead (`--dry-run`
-first lists who gets it), which relays to them all concurrently.
+lead at once goes through `broadcast <message-file> --stop` instead (`--dry-run`
+first lists who gets it), which relays to them all concurrently, and only for a stop order, which cannot wait. A rule change (a temporary rule, "pause to save tokens") is written with `broadcast <message-file> --decisions <path>` to the file the project's loop.md names on its `Standing decisions:` line, under `## Chief of staff decisions` (never the owner's `## Standing decisions`, which routing treats as their authority), and posted to no session: each live post is a wake turn re-reading about 150k tokens of context per lead, and a lead reads that file with `git show origin/<default branch>:<path>` on its next real turn. Commit and push it to the default branch, through the project's own branch rule (a PR where it lands only through PRs), since a lead sees only what it fetches; a project with no such line gets stop orders only.
 
 It returns at once, on this host or another, and its exit says what happened, so run it in
 the foreground and never poll the lead afterwards:
 
 | Exit | Means | You do |
 |---|---|---|
-| 0 | Delivered, or already in the lead's history unanswered (a rerun sends no second copy) | Tell the owner it went |
-| 5 | Queued: the lead holds it until its current step ends, or until the approval prompt it names is answered; the line says which | Tell the owner it lands when that clears; for a prompt, which session waits and on what |
+| 0 | Delivered, already in the lead's history unanswered (a rerun sends no second copy), or `queued until the session's current step ends; it lands then` | Tell the owner it went, or that it lands when the lead's step ends |
+| 5 | Queued behind an approval prompt or a question; the line says which | Tell the owner it lands once that is answered, which session waits and on what |
 | 4 | Not deliverable: archived, a failed revive, or lost; the line says which | Tell the owner, and start a new lead when the ask still stands |
 | 7 | Posted, not confirmed: a read after the post failed | Tell the owner it went but is unconfirmed; run the same relay again, it posts no second copy |
 

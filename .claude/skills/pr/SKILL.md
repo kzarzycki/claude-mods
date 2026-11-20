@@ -32,6 +32,8 @@ Write the PR body in this template, with no preamble, brief prose, and the domai
 <optional: potential ramifications of merge>
 ```
 
+Close the issue the PR finishes with a `Closes #<issue>` line (a slice of an epic closes its own sub-issue, never the epic). `Part of #<n>` alone shows the PR in no issue's Development panel, since GitHub links only closing keywords.
+
 ## Summary
 
 Pick the smallest view that makes the key point: usually one, sometimes several, never all. Put each beside the short text it supports, and keep only the calls, files, props, states and boundaries that point needs.

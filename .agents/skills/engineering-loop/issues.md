@@ -46,14 +46,15 @@ read as approved.
 
 - **Approval**, `approved:spec` and `approved:plan` on the issue: added with the owner's
   approval (SKILL.md, Approvals and proof), so adding it is how they approve, or as the
-  ready state of a spec gatekeeper.md's policy covers. `approved:merge` on a high-risk PR into a
-  feature branch is a go on its head, the owner's or the delegated approver's; into the default
+  ready state of a spec gatekeeper.md's policy covers. `approved:merge` on a PR into a
+  feature branch whose risk level asks a go is a go on its head, the owner's or the delegated approver's; into the default
   branch only `approvals.py approve merge` gives the go, and the label is none (elsewhere the gates
   are the approval and the label means nothing).
-- **Risk**, `risk:high` on an issue or PR: its consequences need the owner at merge (money,
-  data, security, another team's contract). A person sets it, or the lead at
-  triage, and `approvals.py` adds it to a PR when gatekeeper.md's `risk` rule matches or the cap
-  was reached with a core finding open. It names consequences, not urgency: how soon a
+- **Risk**, `risk:high` on an issue or PR: the rating, saying its consequences are high (money,
+  data, security, another team's contract); what a high change needs at merge, by default the
+  owner's go, is gatekeeper.md's `levels` (SKILL.md, Approvals and proof). A person sets it, or the lead at
+  triage, and `approvals.py` adds it to a PR when gatekeeper.md's `risk` rule matches, a path
+  `risk.critical_paths` names is touched, or the cap was reached with a core finding open. It names consequences, not urgency: how soon a
   thing matters is the tracker's priority (its realization file says where it lives), which the
   gate never reads.
 - **Queue**, `loop:queued` on a PR: `land` added it when it put the PR in GitHub's merge queue, and
@@ -110,6 +111,9 @@ filing a new one. Its stories are filed before its approval is asked for (lead.m
 Spec). An epic lands as its sub-issues' PRs, one per sub-issue, each off
 main, with no epic or integration branch; a sub-issue whose work isn't usable yet lands
 unexposed, and the sub-issue that exposes it comes last (SKILL.md, Land small and soon).
+A slice's PR says `Closes #<its sub-issue>`: GitHub shows a PR in an issue's Development panel only for a closing
+keyword, so `Part of #<epic>` alone leaves the epic and the PR unlinked, and `check build` refuses a PR with no
+`Closes` of an open issue. The epic shows progress through its sub-issues and closes when the last one does. One issue is one PR: the merge closes the issue, and `check build` already refuses a second open PR for it, so more work gets its own sub-issue. A PR may close several issues, but one is the norm.
 Two levels only: a sub-issue never has sub-issues of its own, since the
 board's Parent issue field names only the direct parent and a grandchild would not show
 under its epic.

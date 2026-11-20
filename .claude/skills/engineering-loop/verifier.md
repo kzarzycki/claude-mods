@@ -5,10 +5,12 @@ thread (resolution follows triage, which is not yours), and leave nothing behind
 tree ends as you found it, with `git status --porcelain` and `git diff` unchanged. The
 lead gives you the base, the reviewed head, the spec number, priorities and a
 report path, so ask for nothing. You run in the worktree you were started in, a
-detached one at the reviewed head, so you see the tree the author tested. Read no memory (a Hindsight bank or any other store): remembered context carries
+detached one at the reviewed head or the worker's own when lead.md step 7's shared-worktree
+conditions hold, so you see the tree the author tested. Read no memory (a Hindsight bank or any other store): remembered context carries
 the author's assumptions into the review. Call no memory tool, and when your session shows
 recalled memories, leave them out of the review and say in the report that they were there.
-With loop.md's `Cloud worker:` line, name your evidence files for the PR (SKILL.md, Cloud worker).
+Where your test and mutation runs go is SKILL.md, Where heavy steps run. Unless loop.md's
+`Cloud worker:` line says `none`, name your evidence files for the PR (SKILL.md, Cloud worker).
 
 Check the tree first:
 
@@ -19,6 +21,13 @@ Check the tree first:
   because what was tested is not what will land. Review the committed diff, but run no
   gates or repros, since they would test the dirty tree. Tool caches and build output are
   not findings.
+
+**Criteria first.** Before reading the worker's report or proof logs, write from the spec
+alone (its body and comments) the criteria the change must meet, as a `## Criteria` section
+of your report, then map each to a Before merge line and the check it names. A criterion no
+line covers is a finding, since nothing reruns it after the merge. Only then read the
+worker's evidence, so its framing can't narrow the review; `approvals.py verdict` refuses a
+report without the section.
 
 ## Method
 
@@ -56,6 +65,20 @@ yourself, keeping standards and spec as separate axes.
   reviews the merge, whatever its number. Judge an ACCEPTED item by whether its recorded reasoning holds. A pass
   after a fix for a CI check red on a ready PR is the same: only the change since that
   report's head.
+- **Emit the `verifier` event** on the branch you review, so the lead waits on you as on `land` (events.md). A pass
+  that `cloud_verifier.py` runs (`verify` or `thread`) is emitted by the script: a child it starts emits nothing by
+  hand, since an `ok` written before the script posts the review would wake the lead on a review that is not there yet.
+  Any other pass emits with the same helper, from the repo's clone, `uv run <this skill's folder>/scripts/events.py
+  emit verifier <branch> <state>`:
+  - at the start, `waiting --beat 900`, and the same command again before 15 minutes pass while the review runs. A
+    wait reads a `waiting` ref silent after twice its `beat_s`, and a `wait-for` call blocks close to 10 minutes, so
+    the 5-minute default would read a long mutation or acceptance run as dead. Use a `--beat` at least as long as
+    your longest blocking call (900 s covers one), and beat between calls.
+  - at the end, once the report is written (the lead posts the review, not you): `ok` for `SATISFIED: yes`, `failed`
+    for `SATISFIED: no` or no report, `needs-owner --question <file>` when you write `<report>.question`, each with
+    `--url <the report path>`.
+  - the helper exits 0 whatever happens to the push, so it never changes the pass. A lead with no event reads the
+    report as before.
 - **A long or locked run is detached.** This is every role's rule for a long run, worker's
   and lead's too. A gate, repro or e2e run that may wait on a lock
   or a queue, or outlast one tool call, starts detached (in its own session) with its pid, output and exit code
@@ -68,7 +91,7 @@ yourself, keeping standards and spec as separate axes.
   and is waited on up to a total budget you state, in as few calls as you can: each call is
   `omnigent_agent.py wait-for --log <log> --pid <pid>`, which blocks close to a 10-minute tool
   call (`--budget` for another limit) and prints only the outcome, never short polls or a sleep
-  loop of your own, since every call re-reads the whole context. Where that script is not at hand,
+  loop of your own, since every call re-reads the whole context. A `stalled:` exit (exit 1, the log silent for `--stall` seconds, the run's process group killed) means the step hung, not that the change failed: report it with the log tail, and don't rerun it unchanged. Where that script is not at hand,
   each call blocks close to the tool's limit (the longest yield the harness allows on a running
   command, or a sleep loop that checks the log for its exit line), never short polls. Where a
   foreground command stops at 10 minutes (a session in a hosted VM), the run is waited on within
@@ -84,6 +107,17 @@ yourself, keeping standards and spec as separate axes.
   the tool timeout), and past the limit you state the pass ends with a report naming it, never
   on a run still pending, since nothing wakes an idle session and a run left queued can apply
   its mutation after you have gone.
+- **Checks match their lines.** For each Before merge line, read the check it names and say
+  whether it tests what the line says. A check that doesn't is a major, since a passing wrong
+  check proves nothing.
+- **Run the checks yourself.** Run the acceptance command the brief's `Acceptance tests:` line
+  names on the head (SKILL.md, Acceptance checks), and the tests the PR adds or changes, picked
+  from `git diff --name-only <base>...<head>`, each as a long run is (above). You never rely on
+  the worker's gate log, which is the worker's own file, and run no full gate (Gates and repros).
+- **Manual lines.** Probe a `Manual:` line by hand when you rate the change high or the line is
+  risky in itself. Otherwise you may accept it on the worker's evidence, written `Accepted on
+  evidence: <line> — <proof log>`, the log stamped with the head (Proof provenance); `verdict`
+  refuses that line in a report whose `Risk:` is not `low`, naming it.
 - **Drive the instance.** When one is up for the worktree (loop.md § Proof on a branch says how to tell),
   run the spec's Before merge list on it: the UI in a headless browser (worker.md, Report,
   says how: your own headless browser, never one attached over CDP unless the check needs its logins), the API with its client,
@@ -126,10 +160,12 @@ yourself, keeping standards and spec as separate axes.
   itself; it changes CI permissions, secrets, branch protection or the loop's own approval
   rules; or it changes what users see in a significant way the spec did not ask for, or
   asked for only vaguely, so the owner would be surprised. loop.md § Risk criteria, where it
-  has one, adds the project's own. Anything else is low. `verifier: true` in the policy's
-  `risk` (docs/agents/gatekeeper.md) lets a low change merge without the owner, so judge it on the diff, not on
-  how much of it there is. When the lead disputes a `Risk: high` in its thread, judge it
-  again on its reasoning in this pass, and say why the risk stands or falls.
+  has one, adds the project's own. Anything else is low. With `verifier: true` in the policy's
+  `risk` (docs/agents/gatekeeper.md) your `Risk:` line rates the change, and the policy's `levels` say what each
+  rating needs at merge (by default a high change waits for the owner's go, a low one for the gates alone), so
+  judge it on the diff, not on how much of it there is. When the lead disputes a `Risk: high` in its thread, judge it
+  again on its reasoning in this pass, and say why the risk stands or falls; a delta pass cannot lower it, so a
+  verdict that it falls needs the whole PR diff re-reviewed and a closing `Scope: full` line.
 - **A run the sandbox refuses.** A gate, mutation or instance run the sandbox won't let you
   make (a lock or path it can't write, such as a read-only heavy-slot lock) ends in a question
   at once, not a report: a report with no finding but `SATISFIED: no` spends a pass, can reach
@@ -148,10 +184,11 @@ yourself, keeping standards and spec as separate axes.
   necessary, such as a log that shows a new failure, with a `New in the answer: <the log>` line
   naming that log; the verifier script hands no later question to the lead without that line
   (exit 1).
-- **An acceptance line you did not run** through the path a user takes (the spec's Before
-  merge list, on the instance when one is up; a flat `## Acceptance` list is all Before merge)
-  blocks `SATISFIED: yes`, whatever the reason:
-  mark each Before merge line run (with its evidence), failing or not run. List each After
+- **An acceptance line you did not run** blocks `SATISFIED: yes`, whatever the reason: a
+  Before merge line's check run by the acceptance command, a `Manual:` line probed through
+  the path a user takes (on the instance when one is up) or accepted on evidence (Manual
+  lines; a flat `## Acceptance` list is all Before merge): mark each Before merge line run
+  (with its evidence), accepted on evidence, failing or not run. List each After
   merge line under an `After merge:` line in the report (`After merge: none` when the spec has
   none), never counted as run or not run, since it needs the merged default branch or a
   deployed environment and the lead runs it after landing (lead.md step 9). A line not run ends
@@ -162,8 +199,7 @@ yourself, keeping standards and spec as separate axes.
 - **An owner-only step** (SKILL.md, Owner steps park) stops that check: stop it, release
   what it holds, and report it as not run on a `Not run: <step>, owner action: <what>` line, since parking it is
   the lead's. A tool call held for approval waits for the owner, not a hang: never make its change by another route, since the approval is theirs to give (SKILL.md, Owner steps park).
-- **Gates and repros:** you may run `mise run check`. Run a gate as the bare command
-  (`mise run check`), with no wrapper, redirect or detach around it, and keep it running with
+- **Gates and repros:** don't rerun the gate: read the gate of record and run the PR's own tests and acceptance checks. On a draft head with an `Affected tests:` line, the gate of record is the worker's report (its command and exit code); the `gate` status and the `loop-gate/` record are a ready head's. Run a repro or test as the bare command, with no wrapper, redirect or detach around it, and keep it running with
   your harness's own long-command or background support, waited on as a detached run is: an allow rule matches only a plain
   command, so a wrapped one asks for approval, and on a reviewed sandbox each ask is a paid
   model call. Then write its proof log from what it printed: the head's SHA, the command, its
@@ -188,7 +224,8 @@ keep these lines exact:
   A Gemini pass through agy gives its signature, `Verifier: agy/gemini-4-hydrogen-medium/?, pass 1`, and a
   same-family one on the Codex fallback `Verifier: claude, same-family, pass 1 (Codex out of quota)`: `check
   merge` reads either as the default tier, so a satisfied one lands a high-risk change too.
-- Sections: the Review skill's (code-review's Standards and Spec), then Correctness.
+- Sections: `## Criteria` first (Criteria first), then the Review skill's (code-review's
+  Standards and Spec), then Correctness.
 - Per finding, a heading `### <id> (<blocker|major|minor>) <path>:<line>: <title>`, the
   line (or a range `<n>-<m>`, anchored at `<m>`) at the reviewed head (it becomes the PR
   review's inline comment, moved to the nearest line of the diff when outside it), then
@@ -197,6 +234,8 @@ keep these lines exact:
   sub-heading and posts nothing. `verdict` refuses a `### ` heading with a `(<severity>)`
   it can't read, and finding headings that don't add up to the `VERDICT:` counts, rather
   than leave a finding off the review.
+- The report is posted folded (github.md, Comment shape): `verdict` keeps the closing lines in view and puts the
+  criteria under `<details>`, so write the closing lines as below, each alone on its line, and keep prose out of them.
 - End with `Head: <sha>`, the full commit you reviewed (`git rev-parse HEAD` in your
   worktree), then `VERDICT: <n> blocker, <n> major, <n> minor`, `SATISFIED: yes|no` and
   `Risk: low — <reason>` or `Risk: high — <reason>` (Steering, Judge the risk). The gate
@@ -204,6 +243,11 @@ keep these lines exact:
   The gate sets the board's `Risk` field from it (github.md, Board).
   On a delta of merges of the base alone, add `Logic change: none` when its conflict fixes
   change no behaviour, which carries the owner's go to the head, else `Logic change: <what>`.
+  `Risk:` names the PR's risk, not the delta's: the gate takes the highest `Risk:` of the passes since the last one
+  that reviewed the whole change (your first pass, or a later pass with a `Scope: full` line), so a `low` on a delta cannot
+  lower an earlier `high`, and a `high` the lead disputes is re-judged only on a `Scope: full` pass. Write `Scope: full`, as the whole value of a closing line, when you re-reviewed the whole PR diff against the base (a fresh
+  verifier, or a request for a full pass); its `Risk:` then names the PR's risk and may lower an earlier one.
+  Write no `Scope:` line on a pass that reviewed only the diff since the last reviewed head, as every later pass does.
   The merge reads the review as covering that commit only, so a push after your review
   needs its own, unless the new head has your commit's tree (`git rev-parse <sha>^{tree}`),
   as after a reword of commit messages only: every file you reviewed is the same, so your
