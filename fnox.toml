@@ -1,0 +1,4 @@
+# Project-owned machine bindings. Add providers, profiles, and values here.
+root = true
+env = "exec"
+if_missing = "error"

@@ -1,0 +1,95 @@
+name: CI
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+# A PR's newer push cancels its older run. Every push to main keeps
+# its own run, so a red main can be pinned to the merge that caused it.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # The merge checks are the mise task group check:* (all but check:all): the plan lists the
+  # parts this change needs, the matrix runs each as a job named after it, and the aggregate
+  # `check` is the one check main's ruleset requires. Add a part in mise.toml, not here.
+  # A draft runs nothing until ready_for_review; a push or a queue entry has no PR, so it always runs.
+  # BASE_REF is the change's base, read by ci:parts and each part: a PR's base branch, a push's
+  # previous commit (github.base_ref is set only on a PR).
+  # A push the merge queue already tested lists no part (ci:parts says how).
+  plan:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # to find the merge queue's run of a push's commit
+    outputs:
+      parts: ${{ steps.parts.outputs.parts }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the base and the merge base, on every event
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install: false # listing the parts needs only mise and python3, which the runner has
+      - id: parts
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: mise run ci:parts
+
+  part:
+    needs: plan
+    if: ${{ needs.plan.outputs.parts != '[]' }}
+    name: ${{ matrix.part }}
+    runs-on: ubuntu-latest
+    # ponytail: one timeout for every part, the longest's; a per-part limit would be a second definition of the part.
+    timeout-minutes: 45
+    env:
+      UV_LOCKED: "1" # a uv sync fails on a stale uv.lock instead of rewriting it
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # mise installs the pinned tools; each part is the same task agents run.
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - run: mise run setup:dev
+      - env:
+          PART: ${{ matrix.part }}
+          BASE_REF: ${{ github.base_ref || github.event.before }}
+        run: mise run "$PART"
+
+  check:
+    needs: [plan, part]
+    # Always, so the required check reports even when the plan or a part failed or was cancelled.
+    if: ${{ always() && !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # to name the failed parts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install: false # ci:check needs only gh, which the runner has
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          PARTS: ${{ needs.part.result }}
+          PLANNED: ${{ needs.plan.outputs.parts }}
+          GH_TOKEN: ${{ github.token }}
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: mise run ci:check

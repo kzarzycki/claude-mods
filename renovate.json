@@ -1,0 +1,88 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommitTypeAll(chore)"],
+  "timezone": "UTC",
+  "labels": ["dependencies"],
+  "lockFileMaintenance": {
+    "description": "Routine: refreshes the lock files once a week, so a package pinned only there (a transitive one in uv.lock) updates too.",
+    "enabled": true,
+    "schedule": ["* 0-5 * * 1"],
+    "automerge": true
+  },
+
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "apm.yml git packages pinned to a release tag <package>-vX.Y.Z",
+      "managerFilePatterns": ["/(^|/)apm\\.yml$/"],
+      "matchStrings": [
+        "-\\s+git:\\s*(?<packageName>[\\w.-]+/[\\w.-]+)/(?<package>[\\w.-]+)\\s*\\n\\s*ref:\\s*[\\w.-]+?-v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "{{{packageName}}}/{{{package}}}",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "semver",
+      "extractVersionTemplate": "^{{{package}}}-v(?<version>\\d+\\.\\d+\\.\\d+)$"
+    }
+  ],
+
+  "packageRules": [
+    {
+      "description": "Routine: patch and minor updates of tools, libraries and actions, one group a week, landed on the gates.",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "tools and libraries",
+      "schedule": ["* 0-5 * * 1"],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "Verify: a major update gets its own draft PR, which an agent reviews before it lands.",
+      "matchUpdateTypes": ["major"],
+      "addLabels": ["verify"],
+      "draftPR": true,
+      "automerge": false
+    },
+    {
+      "description": "Verify: the template, one draft PR a night, which an agent reviews before it lands. Its own branch: copier refuses a tree another manager already changed.",
+      "matchManagers": ["copier"],
+      "groupName": "template",
+      "schedule": ["* 0-5 * * *"],
+      "minimumReleaseAge": null,
+      "addLabels": ["verify"],
+      "draftPR": true,
+      "automerge": false,
+      "ignoreScripts": false,
+      "postUpgradeTasks": {
+        "commands": ["mise run agent:sync -- --refresh"],
+        "executionMode": "branch"
+      }
+    },
+    {
+      "description": "Verify: the agent packages, one draft PR a night, which an agent reviews before it lands. Its own branch: copier refuses a tree another manager already changed.",
+      "matchManagers": ["custom.regex"],
+      "groupName": "agent packages",
+      "schedule": ["* 0-5 * * *"],
+      "minimumReleaseAge": null,
+      "addLabels": ["verify"],
+      "draftPR": true,
+      "automerge": false,
+      "ignoreScripts": false,
+      "postUpgradeTasks": {
+        "commands": ["mise run agent:sync -- --refresh"],
+        "executionMode": "branch"
+      }
+    },
+    {
+      "description": "mise pins conda tools by bare name and installs them from conda-forge; anaconda.org names a package by channel.",
+      "matchManagers": ["mise"],
+      "matchDatasources": ["conda"],
+      "matchPackageNames": ["!/\\//"],
+      "overridePackageName": "conda-forge/{{{packageName}}}"
+    },
+    {
+      "description": "Copier records gh:owner/repo, which Renovate's git-tags lookup cannot read.",
+      "matchManagers": ["copier"],
+      "matchPackageNames": ["/^gh:/"],
+      "overridePackageName": "https://github.com/{{{replace '^gh:' '' packageName}}}"
+    }
+  ]
+}

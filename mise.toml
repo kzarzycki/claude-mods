@@ -1,0 +1,640 @@
+[tools]
+pre-commit = "4.6.0"
+uv = "0.11.29"  # mise installs the pipx: tools with uv
+# The lint: tasks' tools; each version lives only here.
+"pipx:pre-commit-hooks" = "6.0.0"
+"pipx:detect-secrets" = "1.5.0"
+"pipx:conventional-pre-commit" = "4.4.0"
+"pipx:copier" = "9.17.0"  # deps:renovate applies template updates with it
+gitleaks = "8.30.1"
+actionlint = "1.7.12"
+zizmor = "1.27.0"
+python = "3.14"
+bun = "1.3.14"  # the eval kernel and the type check
+
+"github:microsoft/apm" = "0.33.0"
+fnox = "1.30.0"
+
+
+[tasks."agent:sync"]
+alias = "agent-sync"
+description = "Converge project-owned coding agent configuration."
+usage = '''
+flag "--refresh" help="Resolve available dependency releases before convergence"
+flag "--frozen" help="Verify the committed lock and generated coding agent state"
+'''
+run = """
+if [ "${usage_refresh:-false}" = true ] && [ "${usage_frozen:-false}" = true ]; then
+  echo "error: --refresh and --frozen cannot be combined" >&2
+  exit 2
+fi
+mode=default
+if [ "${usage_refresh:-false}" = true ]; then mode=refresh; fi
+if [ "${usage_frozen:-false}" = true ]; then mode=frozen; fi
+command -v apm >/dev/null || { echo "error: apm 0.33.0 is required; run 'mise install'" >&2; exit 127; }
+command -v python3 >/dev/null || { echo "error: python3 is required; run 'mise install'" >&2; exit 127; }
+command -v fnox >/dev/null || { echo "error: fnox 1.30.0 is required; run 'mise install'" >&2; exit 127; }
+agent_targets="$(python3 -c '
+import re
+from pathlib import Path
+
+targets = []
+in_targets = False
+for line in Path("apm.yml").read_text().splitlines():
+    if not in_targets:
+        in_targets = re.fullmatch(r"targets:\\s*(?:#.*)?", line) is not None
+        continue
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    match = re.fullmatch(r"-\\s*([a-z0-9-]+)(?:\\s+#.*)?", stripped)
+    if match is None:
+        break
+    targets.append(match.group(1))
+print(",".join(targets))
+')"
+if [ -z "$agent_targets" ]; then
+  echo "error: apm.yml must activate at least one coding agent target" >&2
+  exit 2
+fi
+if [ "$mode" = frozen ]; then
+  frozen_changes="$(git status --porcelain=v1 --untracked-files=all -- \
+    apm.yml apm.lock.yaml .apm AGENTS.md CLAUDE.md \
+    ':(glob)**/AGENTS.md' ':(glob)**/CLAUDE.md' \
+    .agents .claude .codex .github/instructions)"
+  if [ -n "$frozen_changes" ]; then
+    echo "error: frozen agent configuration changed:" >&2
+    echo "$frozen_changes" >&2
+    echo "run 'mise run agent:sync' and commit the resulting agent configuration" >&2
+    exit 1
+  fi
+fi
+case "$mode" in
+  default) apm install --target "$agent_targets" ;;
+  refresh)
+    apm update --yes --target "$agent_targets"
+    # apm 0.35.0's update can leave out a skill that ships scripts/; an install puts it back.
+    apm install --target "$agent_targets"
+    ;;
+  frozen)
+    apm install --frozen --target "$agent_targets"
+    apm audit --ci --no-policy
+    ;;
+esac
+apm compile --clean
+apm compile --validate
+apm audit --ci --no-policy
+# Add native-output validation for every implemented coding agent here.
+if [ -f .mcp.json ]; then python3 -m json.tool .mcp.json >/dev/null; fi
+if [ -f .codex/config.toml ]; then python3 -c 'import tomllib; tomllib.load(open(".codex/config.toml", "rb"))'; fi
+fnox check --all --non-interactive --if-missing error
+if [ "$mode" = frozen ]; then
+  frozen_changes="$(git status --porcelain=v1 --untracked-files=all -- \
+    apm.yml apm.lock.yaml .apm AGENTS.md CLAUDE.md \
+    ':(glob)**/AGENTS.md' ':(glob)**/CLAUDE.md' \
+    .agents .claude .codex .github/instructions)"
+  if [ -n "$frozen_changes" ]; then
+    echo "error: frozen agent configuration changed:" >&2
+    echo "$frozen_changes" >&2
+    echo "run 'mise run agent:sync' and commit the resulting agent configuration" >&2
+    exit 1
+  fi
+fi
+"""
+
+# Launcher tasks are coding-agent-specific. Add one only when the coding agent
+# has a stable CLI.
+[tasks."agent:claude"]
+alias = "agent-claude"
+description = "Launch Claude Code with this repository's machine bindings."
+run = """
+command -v fnox >/dev/null || { echo "error: fnox 1.30.0 is required; run 'mise install'" >&2; exit 127; }
+command -v claude >/dev/null || { echo "error: claude is required; install Claude Code and add 'claude' to PATH" >&2; exit 127; }
+fnox exec --non-interactive --if-missing error -- claude
+"""
+
+[tasks."agent:codex"]
+alias = "agent-codex"
+description = "Launch Codex with this repository's machine bindings."
+run = """
+command -v fnox >/dev/null || { echo "error: fnox 1.30.0 is required; run 'mise install'" >&2; exit 127; }
+command -v codex >/dev/null || { echo "error: codex is required; install Codex and add 'codex' to PATH" >&2; exit 127; }
+fnox exec --non-interactive --if-missing error -- codex
+"""
+
+[env]
+# APM owns these trees and hash-tracks every file it deploys, so a fix there is drift that
+# fails `mise run check:agents`: the fixing lint: tasks skip them. The secret scanners still read them.
+APM_MANAGED = '^(\.agents|\.claude|\.codex|\.github/instructions)/|(^|/)AGENTS\.md$|/CLAUDE\.md$'
+
+# The merge checks: every check: task but check:all is a part, and CI runs each as its own
+# job named after it (mise run ci:parts). Add a part here and CI runs it; give it a path
+# filter in .github/check-paths.yml.
+[tasks.check]
+description = "Runs check:lint and check:unit: the fast set to run before every push."
+depends = ["check:lint", "check:unit"]
+
+[tasks."check:all"]
+description = "Runs every check: part: the list CI runs."
+depends = ["check:*"]
+
+[tasks."check:lint"]
+alias = ["lint", "fmt"]
+description = "Runs every lint: task on the whole repo; no pre-commit."
+# One at a time, since two fixers rewriting one file at once lose a fix. The outer mise run
+# already provided the tools.
+run = "mise run --skip-tools --jobs 1 --continue-on-error 'lint:*'"
+
+[tasks."check:secrets"]
+description = "Scans every commit on the branch since its base with gitleaks (the pre-commit hook sees only staged changes)."
+run = '''
+# The branch's base: origin/$BASE_REF (default main); a caller skips the diff while it doesn't exist.
+# CI passes a 40-hex commit instead: on a push the commit before it, in a merge queue the queue's base.
+ref="${BASE_REF:-main}"
+# Length via wc: a brace followed by a hash opens a template comment.
+if [ "$(( $(printf %s "$ref" | wc -c) ))" -eq 40 ] && [ -z "$(printf %s "$ref" | tr -d 0-9a-f)" ]; then base="$ref"; else base="origin/$ref"; fi
+if git rev-parse -q --verify "$base^{commit}" >/dev/null; then range="$base..HEAD"; else range=HEAD; fi
+gitleaks git --log-opts="$range" --redact --no-banner
+'''
+
+[tasks."check:agents"]
+description = "Runs agent:sync --frozen: the committed agent config matches apm.yml."
+run = '''
+if [ -f apm.lock.yaml ]; then
+  # The outer mise run already provided the tools.
+  mise run --skip-tools agent:sync -- --frozen
+else
+  # ponytail: an unsynced project has no lock to verify; the first committed sync arms this.
+  echo "check:agents: no apm.lock.yaml yet, agent configuration not verified; run 'mise run agent:sync' and commit its output" >&2
+fi
+'''
+
+# Each lint: task is one linter's one definition: given files (the git hook passes the staged
+# ones) it lints those, given none the whole repo. scripts/files-or-repo picks the files.
+[tasks."lint:eof"]
+description = "Ends each text file with exactly one newline; fixes in place."
+run = 'scripts/files-or-repo --text --skip "${APM_MANAGED:-}" end-of-file-fixer --'
+
+[tasks."lint:whitespace"]
+description = "Strips trailing whitespace; fixes in place."
+run = 'scripts/files-or-repo --text --skip "${APM_MANAGED:-}" trailing-whitespace-fixer --'
+
+[tasks."lint:yaml"]
+description = "Fails on a YAML file that doesn't parse."
+run = 'scripts/files-or-repo --only "\.ya?ml$" check-yaml --'
+
+[tasks."lint:toml"]
+description = "Fails on a TOML file that doesn't parse."
+run = 'scripts/files-or-repo --only "\.toml$" check-toml --'
+
+[tasks."lint:json"]
+description = "Fails on a JSON file that doesn't parse."
+# LINT_JSON_SKIP, an ERE the project sets under [env], drops the paths that carry a .json name but
+# hold no JSON (e.g. chezmoi modify_ scripts), so the project never edits this task.
+run = 'scripts/files-or-repo --only "\.json$" --skip "${LINT_JSON_SKIP:-}" check-json --'
+
+[tasks."lint:merge-conflict"]
+description = "Fails on a leftover conflict marker."
+# --assume-in-merge: outside a merge the hook checks nothing, and CI is never inside one.
+run = 'scripts/files-or-repo --text check-merge-conflict --assume-in-merge --'
+
+[tasks."lint:large-files"]
+description = "Fails on a file over the size limit (1 MiB)."
+# --enforce-all: without it only staged files count, and CI has none.
+run = 'scripts/files-or-repo check-added-large-files --maxkb=1024 --enforce-all --'
+
+[tasks."lint:env"]
+description = "Fails when .env is tracked."
+# A hook's file arguments are ignored: the index holds a staged .env too.
+run = '''
+untracked() { if git ls-files --error-unmatch .env >/dev/null 2>&1; then echo "lint:env: .env is tracked; untrack it with git rm --cached .env (.gitignore lists it)" >&2; return 1; fi; }
+untracked
+'''
+
+[tasks."lint:gitleaks"]
+description = "Scans the given files (or the whole tree) for secrets."
+# gitleaks dir takes one path and reads ignored files too, so the files are copied to a scratch tree.
+run = '''
+scan() {
+  config="$PWD/.gitleaks.toml"
+  tree="$(mktemp -d)"
+  trap 'rm -rf "$tree"' EXIT
+  if [ $# -gt 0 ]; then printf '%s\0' "$@"; else git ls-files -z; fi | tar --null -T - -cf - 2>/dev/null | tar -xf - -C "$tree"
+  cd "$tree"
+  if [ -f "$config" ]; then gitleaks dir . --redact --no-banner --config "$config"; else gitleaks dir . --redact --no-banner; fi
+}
+scan
+'''
+
+[tasks."lint:detect-secrets"]
+description = "Fails on a secret not in the baseline."
+# apm.lock.yaml (resolved SHAs and content hashes) and .copier-answers.yml (the template's ref
+# and source) read as high-entropy strings and are generated, so they can't carry an inline
+# allowlist pragma. lint:gitleaks still scans both.
+# ponytail: the engineering pack's gatekeeper.py writes an OpenSSH key's armour line as text,
+# which reads as a private key, and an APM-managed file can't carry the pragma. This one line is
+# excluded until the pack marks it (kzarzycki/agent-skills#1502).
+run = '''scripts/files-or-repo --text --skip "^(apm\.lock\.yaml|\.copier-answers\.yml)$" detect-secrets-hook --exclude-lines '^ *\["-----BEGIN OPENSSH PRIV.TE KEY-----", \*lines, ' --'''
+
+[tasks."lint:commit-msg"]
+description = "Fails on a commit message that isn't a Conventional Commit; given none, checks the branch's commits since base."
+run = '''
+# The branch's base: origin/$BASE_REF (default main); a caller skips the diff while it doesn't exist.
+# CI passes a 40-hex commit instead: on a push the commit before it, in a merge queue the queue's base.
+ref="${BASE_REF:-main}"
+# Length via wc: a brace followed by a hash opens a template comment.
+if [ "$(( $(printf %s "$ref" | wc -c) ))" -eq 40 ] && [ -z "$(printf %s "$ref" | tr -d 0-9a-f)" ]; then base="$ref"; else base="origin/$ref"; fi
+messages() {
+  if [ $# -gt 0 ]; then conventional-pre-commit "$@"; return; fi
+  # No base yet (before the first push): the last commit.
+  if git rev-parse -q --verify "$base^{commit}" >/dev/null; then shas="$(git rev-list --no-merges "$base..HEAD")"; else shas="$(git rev-list --no-merges -1 HEAD)"; fi
+  message="$(mktemp)"
+  fail=0
+  for sha in $shas; do
+    git log -1 --format=%B "$sha" >"$message"
+    conventional-pre-commit "$message" >/dev/null || { echo "lint:commit-msg: $(git log -1 --format='%h %s' "$sha") is not a Conventional Commit (type: summary)" >&2; fail=1; }
+  done
+  rm -f "$message"
+  return "$fail"
+}
+messages
+'''
+
+[tasks."lint:actionlint"]
+description = "Checks the GitHub workflows."
+run = 'scripts/files-or-repo --only "^\.github/workflows/[^/]+\.ya?ml$" actionlint --'
+
+[tasks."lint:zizmor"]
+description = "Checks the workflows for security mistakes."
+run = 'scripts/files-or-repo --only "^\.github/(workflows/[^/]+|dependabot)\.ya?ml$" zizmor --'
+
+[tasks."lint:symlinks"]
+description = "Fails on a broken or absolute symlink."
+run = "scripts/check-symlinks.sh"
+
+[tasks."ci:parts"]
+description = "Prints the check: parts this change needs, for CI's matrix."
+# BASE_REF is the change's base, as check:secrets reads it. A part with a key in
+# .github/check-paths.yml runs only when a file changed since the merge base matches its filter;
+# without a usable base (none set, as when run locally, all zeros, or a commit the checkout lacks)
+# every part runs. A push lists no part when a merge_group run of this workflow already passed on its
+# commit: a merge queue lands the commit it tested, so the push would repeat it; any other push, or a
+# failed lookup, goes by the filters. In GitHub Actions it also writes the list to the step's output and summary.
+run = '''
+base=""
+if [ -n "${BASE_REF:-}" ]; then
+# The branch's base: origin/$BASE_REF (default main); a caller skips the diff while it doesn't exist.
+# CI passes a 40-hex commit instead: on a push the commit before it, in a merge queue the queue's base.
+ref="${BASE_REF:-main}"
+# Length via wc: a brace followed by a hash opens a template comment.
+if [ "$(( $(printf %s "$ref" | wc -c) ))" -eq 40 ] && [ -z "$(printf %s "$ref" | tr -d 0-9a-f)" ]; then base="$ref"; else base="origin/$ref"; fi
+fi
+mise tasks ls --json | BASE="$base" python3 -c '
+import json, os, re, subprocess, sys
+from pathlib import Path
+
+
+def tested_by_the_queue():
+    workflow = os.environ.get("GITHUB_WORKFLOW_REF", "").split("@")[0].rsplit("/", 1)[-1]
+    query = "repos/{}/actions/workflows/{}/runs?event=merge_group&status=success&head_sha={}".format(
+        os.environ.get("GITHUB_REPOSITORY"), workflow, os.environ.get("GITHUB_SHA"))
+    try:
+        found = subprocess.run(["gh", "api", query, "--jq", ".total_count"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    # Only a positive count is a found run: null, an error text or a negative number is a failed lookup.
+    count = found.stdout.strip()
+    return found.returncode == 0 and re.fullmatch("[0-9]+", count) is not None and int(count) > 0
+
+
+# A mise monorepo root lists its own tasks as //:<task>, and CI runs them by the bare name.
+names = [t["name"].removeprefix("//:") for t in json.load(sys.stdin)]
+parts = sorted(name for name in names if name.startswith("check:") and name != "check:all")
+paths = Path(".github/check-paths.yml")
+# The project version alone may change in these files: a release bump is no change to test.
+VERSION_FILES = ("pyproject.toml", "uv.lock", "package.json", "package-lock.json")
+GLOB = {"**/": "(?:.*/)?", "/**": "/.*", "**": ".*", "*": "[^/]*"}
+
+
+def git(*args):
+    return os.fsdecode(subprocess.run(["git", *args], capture_output=True, check=True).stdout)
+
+
+def read_filters(text):
+    # ponytail: the YAML subset this file is written in (part keys over block lists of globs, or a
+    # one-line flow list); any other line fails the plan, since a misread filter would skip a part silently.
+    filters, globs = {}, None
+    for number, line in enumerate(text.splitlines(), 1):
+        bare = re.sub(r"(^|\s)#.*", "", line).strip()
+        key = re.fullmatch(r"[\x22\x27]?(check:[\w:-]+)[\x22\x27]?\s*:(?:\s*\[(.*)\])?", bare)
+        item = re.fullmatch(r"-\s+([\x22\x27]?)(.+?)\1", bare)
+        if key and key.group(2) is not None:
+            # An item is one quoted string with no comma, or a plain one that YAML reads as a string (no
+            # leading * alias or & anchor, no brackets or quotes); anything else fails, nested or split lists too.
+            flow = [re.fullmatch(r"\x22([^\x22,]*)\x22|\x27([^\x27,]*)\x27|([^\x22\x27\[\]&*\s][^\x22\x27\[\],]*)", glob.strip())
+                    for glob in key.group(2).split(",") if glob.strip()]
+            if not all(flow):
+                sys.exit(f"{paths}:{number}: a flow list item this reader cannot read: {line}")
+            filters.setdefault(key.group(1), []).extend(next(g for g in glob.groups() if g is not None) for glob in flow)
+            globs = None
+        elif key:
+            globs = filters.setdefault(key.group(1), [])
+        elif item and globs is not None:
+            globs.append(item.group(2))
+        elif bare not in ("", "{}"):
+            sys.exit(f"{paths}:{number}: neither a check: part key nor a glob under one: {line}")
+    return filters
+
+
+def pattern(glob):
+    # ponytail: ** and * only; braces, classes and ? match themselves.
+    return re.compile("".join(GLOB.get(piece, re.escape(piece)) for piece in re.split(r"(\*\*/|/\*\*$|\*\*|\*)", glob)))
+
+
+def matches(path, globs):
+    hit = [glob for glob in globs if pattern(glob.removeprefix("!")).fullmatch(path)]
+    return any(not glob.startswith("!") for glob in hit) and not any(glob.startswith("!") for glob in hit)
+
+
+def without_own_version(name, text):
+    if name in ("pyproject.toml", "uv.lock"):
+        import tomllib  # Python 3.11+; without it the file counts as changed
+        data = tomllib.loads(text)
+    else:
+        data = json.loads(text)
+    if name == "pyproject.toml":
+        data.get("project", {}).pop("version", None)
+    elif name == "uv.lock":
+        for package in data.get("package", []):
+            if {"editable", "virtual"} & set(package.get("source", {})):
+                package.pop("version", None)
+    else:
+        data.pop("version", None)
+        if name == "package-lock.json":
+            data.get("packages", {}).get("", {}).pop("version", None)
+    return data
+
+
+def version_only(path, merge_base):
+    name = path.rsplit("/", 1)[-1]
+    if name not in VERSION_FILES:
+        return False
+    try:  # a file missing on either side or that fails to parse counts as changed
+        old, new = (without_own_version(name, git("show", f"{rev}:{path}")) for rev in (merge_base, "HEAD"))
+        return old == new
+    except Exception:
+        return False
+
+
+filters = read_filters(paths.read_text()) if paths.exists() else {}
+base, changed = os.environ.get("BASE", ""), None
+if not base:
+    print("every part runs: BASE_REF is unset, so there is no base to compare with", file=sys.stderr)
+else:
+    try:
+        merge_base = git("merge-base", base, "HEAD").strip()
+        # --no-renames: a file moved out of a folder counts for that folder too.
+        changed = [path for path in git("diff", "-z", "--no-renames", "--name-only", f"{base}...HEAD").split("\0") if path]
+    except subprocess.CalledProcessError:
+        print(f"every part runs: {base} is not in this checkout or shares no history with HEAD", file=sys.stderr)
+if changed is not None:
+    for path in [path for path in changed if version_only(path, merge_base)]:
+        print(f"{path}: only the project version changed, not counted", file=sys.stderr)
+        changed.remove(path)
+run = [part for part in parts
+       if part not in filters or changed is None or any(matches(path, filters[part]) for path in changed)]
+skipped = [part for part in parts if part not in run]
+queued = os.environ.get("GITHUB_EVENT_NAME") == "push" and tested_by_the_queue()
+if queued:
+    run, skipped = [], []
+print(json.dumps(run))
+if queued:
+    print("skipped every part: a merge_group run of this workflow passed on this commit", file=sys.stderr)
+for part in skipped:
+    print(f"skipped {part}: its filter in {paths} matched no changed file", file=sys.stderr)
+if os.environ.get("GITHUB_OUTPUT"):
+    with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+        out.write(f"parts={json.dumps(run)}\n")
+if os.environ.get("GITHUB_STEP_SUMMARY"):
+    with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+        if queued:
+            out.write("- every part: skipped, the merge queue tested this commit\n")
+        out.write("".join(f"- `{part}`: runs\n" for part in run))
+        out.write("".join(f"- `{part}`: skipped, its path filter matched no change\n" for part in skipped))
+'
+'''
+
+[tasks."ci:check"]
+description = "CI's aggregate check: fails unless the plan and every part passed, naming each failed part and the command that reruns it."
+# PLAN and PARTS are the plan and matrix jobs' results, PLANNED the plan's parts: none skips the
+# matrix. Locally `mise run check` is only the fast set, so a failed part names its own command.
+run = '''
+if [ "${PLAN:-}" = success ] && [ "${PARTS:-}" = success ]; then echo "every check: part passed"; exit 0; fi
+if [ "${PLAN:-}" = success ] && [ "${PARTS:-}" = skipped ] && [ "${PLANNED:-}" = "[]" ]; then echo "the plan listed no check: part"; exit 0; fi
+echo "::error::plan: ${PLAN:-unknown}, parts: ${PARTS:-unknown}"
+failed="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name')" || failed=""
+for part in $failed; do
+  case "$part" in check:*) echo "::error::$part failed; rerun it with: mise run $part" ;; esac
+done
+exit 1
+'''
+[tasks."deps:renovate"]
+description = "Runs Renovate (renovate.json) on this repo with your gh login: opens or updates its dependency PRs. `-- --branch <name>` instead dry-runs that branch with this checkout's renovate.json and opens nothing. Needs gh logged in with the repo and workflow scopes."
+# Self-hosted with the developer's own token, so it needs no org admin: the PRs are theirs, and a PR
+# a user token opens starts CI. The admin settings are this process's environment. Pass Renovate's
+# own flags after --, such as --dry-run=full.
+run = """
+command -v gh >/dev/null || { echo "error: gh is required; install the GitHub CLI and run 'gh auth login'" >&2; exit 127; }
+token="$(gh auth token 2>/dev/null)" || { echo "deps:renovate: gh is not logged in; run 'gh auth login'" >&2; exit 1; }
+# An OAuth or classic token names its scopes in this header; a token without the header is let through.
+scopes="$(gh api -i user 2>/dev/null | tr -d '\\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: //p')"
+if [ -n "$scopes" ]; then
+  for scope in repo workflow; do
+    case ", $scopes," in *", $scope,"*) ;; *) echo "deps:renovate: the gh token lacks the $scope scope; run 'gh auth refresh -s repo,workflow'" >&2; exit 1 ;; esac
+  done
+fi
+base="${XDG_CACHE_HOME:-$HOME/.cache}/renovate"
+export RENOVATE_TOKEN="$token" RENOVATE_PLATFORM=github RENOVATE_ONBOARDING=false RENOVATE_REQUIRE_CONFIG=required \\
+  RENOVATE_REPOSITORIES="$(gh repo view --json nameWithOwner --jq .nameWithOwner)" \\
+  RENOVATE_ALLOW_SCRIPTS=true RENOVATE_ALLOWED_COMMANDS='["^mise run agent:sync -- --refresh$"]' \\
+  RENOVATE_BINARY_SOURCE=global RENOVATE_BASE_DIR="$base" \\
+  RENOVATE_GIT_AUTHOR="$(git config user.name) <$(git config user.email)>" \\
+  MISE_TRUSTED_CONFIG_PATHS="$base${MISE_TRUSTED_CONFIG_PATHS:+:$MISE_TRUSTED_CONFIG_PATHS}"
+# mise appends the task's arguments to the script's last line, so that line calls a function.
+run_renovate() {
+  # Proof for a branch's renovate.json before it lands: Renovate reads this checkout's file as its
+  # config and dry-runs only that branch. Renovate only warns on a config error, so the validator
+  # runs first and its failure is the task's.
+  if [ "${1:-}" = --branch ]; then
+    [ -n "${2:-}" ] || { echo "deps:renovate: --branch needs a branch name" >&2; exit 2; }
+    mise exec node@24.21.0 -- npx --yes --package renovate@44.145.1 -- renovate-config-validator renovate.json || exit
+    export RENOVATE_CONFIG_FILE="$PWD/renovate.json" RENOVATE_BASE_BRANCH_PATTERNS="[\\"$2\\"]" \\
+      RENOVATE_REQUIRE_CONFIG=ignored RENOVATE_DRY_RUN=full
+    shift 2
+  fi
+  exec mise exec node@24.21.0 -- npx --yes renovate@44.145.1 "$@"
+}
+run_renovate "$@"
+"""
+
+[tasks."loop:approvals"]
+alias = "gate"
+description = "Checks the loop's proofs on GitHub: approved spec, verdict, Evidence, merge approval. merge exits 3 while it waits for check, or for the owner's approved:merge on a high-risk PR."
+usage = '''
+arg "<point>" help="build or merge"
+arg "[pr]" help="the PR number; default: this branch's PR"
+'''
+# Add the project's own checks as more lines; the task stops at the first that fails.
+# ponytail: the path is the codex target's copy; without codex, point it at .claude/skills.
+run = [
+  'test -f .agents/skills/engineering-loop/scripts/approvals.py || { echo "loop:approvals: the engineering-loop skill is not installed; run mise run agent:sync and commit its output" >&2; exit 1; }',
+  'uv run .agents/skills/engineering-loop/scripts/approvals.py check "${usage_point}" ${usage_pr:-}',
+]
+
+[tasks."loop:land"]
+description = "The one way an agent lands PRs: under a lock, the pack's batch land gates every landable PR, this one included, as one batch on their combined tree, then merges each through GitHub pinned to its head. Exits 0 merged, 1 on a missing proof, 3 while it waits (a pending check, or the lock held by another land); with --wait it returns only once the PR merges or needs someone. Where main requires GitHub's merge queue it enqueues each landable PR instead, pinned to its head, and the queue's CI run gates it."
+usage = '''
+arg "<pr>" help="the PR number"
+flag "--wait" help="wait until the PR merges or needs someone"
+'''
+# ponytail: the path is the codex target's copy; without codex, point it at .claude/skills.
+run = [
+  'test -f .agents/skills/engineering-loop/scripts/approvals.py || { echo "loop:land: the engineering-loop skill is not installed; run mise run agent:sync and commit its output" >&2; exit 1; }',
+  'uv run .agents/skills/engineering-loop/scripts/approvals.py land "${usage_pr}" $([ "${usage_wait:-false}" = true ] && echo --wait)',
+]
+
+[tasks."ci:approvals"]
+description = "CI's approvals step: posts loop:approvals merge's result as the loop:approvals and gatekeeper commit statuses (same state, description and link) on the PR head (pending while it waits); a push removes approved:merge first. It never merges: mise run loop:land does."
+# A job ends only as success or failure, and GitHub counts a skipped job as passed, so the
+# result is a commit status, which main's ruleset requires. It is posted as `loop:approvals` (what rulesets
+# require) and as `gatekeeper` (the gatekeeper's new name, posted for one release line). The workflow sets ACTION,
+# PR, and RUN_URL.
+run = '''
+post() {
+  for context in loop:approvals gatekeeper; do
+    gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$1" -f state="$2" -f context="$context" \
+      -f description="$(printf '%s' "$3" | cut -c1-140)" -f target_url="$RUN_URL" >/dev/null
+  done
+  echo "loop:approvals, gatekeeper: $2 on $1: $3"
+}
+[ -n "${PR:-}" ] || { echo "ci:approvals: no PR for this run; nothing to post"; exit 0; }
+pull="$(gh pr view "$PR" --json headRefOid,isDraft,author --jq '[.headRefOid, .isDraft, .author.login] | @tsv')"
+head="$(printf '%s' "$pull" | cut -f1)"
+if [ "$(printf '%s' "$pull" | cut -f2)" = true ]; then echo "ci:approvals: PR #$PR is a draft; nothing to post"; exit 0; fi
+if [ "$(printf '%s' "$pull" | cut -f3)" = "app/dependabot" ]; then
+  post "$head" success "a dependabot update carries no loop proofs"
+  exit 0
+fi
+if [ "$ACTION" = synchronize ]; then
+  # The label never covers a head the owner didn't see. A 404 means it was not on the PR.
+  out="$(gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/approved:merge" 2>&1)" || case "$out" in
+    *"HTTP 404"*) ;;
+    *) post "$head" failure "could not remove approved:merge after the push"; echo "ci:approvals: could not remove approved:merge: $out" >&2; exit 1 ;;
+  esac
+fi
+code=0
+out="$(mise run --quiet --skip-tools loop:approvals merge "$PR")" || code=$?
+printf '%s\n' "$out"
+first="$(printf '%s\n' "$out" | sed -n 1p)"
+case "$code" in
+  0) post "$head" success "${first:-every proof holds}" ;;
+  3) post "$head" pending "$first" ;;
+  *) post "$head" failure "${first:-loop:approvals exited $code}"; exit 1 ;;
+esac
+# The job never merges: mise run loop:land gates every landable PR as one batch under a lock and merges
+# each with the agent's own token, so main's push workflows run on every merge.
+'''
+
+[tasks."setup:github"]
+description = "Writes GitHub settings (the ruleset and head branch deletion; on a plan without rulesets, squash-only merges and head branch deletion), then syncs the labels with the pack's labels.py, from the repo's files; runs no checks. --dry-run prints the label plan and writes nothing; --revert deletes the ruleset."
+usage = '''
+flag "--revert" help="Delete the loop-merge-queue ruleset; the repository settings are restored with the command apply printed"
+flag "--dry-run" help="Print what labels.py would change; write nothing to GitHub (no ruleset, settings or labels)"
+'''
+# The task owns only the ruleset named loop-merge-queue and never reads or changes another one:
+# GitHub layers every active ruleset on a branch, so the repo's own rules keep applying.
+# The ruleset requires CI's `check` job and the `loop:approvals` status by name: rename one, update
+# the ruleset, rerun this.
+run = '''
+command -v gh >/dev/null || { echo "error: gh is required; install the GitHub CLI and run 'gh auth login'" >&2; exit 127; }
+# The labels are the pack's: labels.py is their one definition, read from docs/agents/issue-tracker.md.
+# ponytail: the path is the codex target's copy; without codex, point it at .claude/skills.
+labels=.agents/skills/engineering-loop/scripts/labels.py
+# Checked before any write, so a missing skill never leaves the ruleset applied and the labels not.
+if [ "${usage_revert:-false}" = true ]; then
+  if [ "${usage_dry_run:-false}" = true ]; then echo "error: --dry-run and --revert cannot be combined" >&2; exit 2; fi
+elif [ ! -f "$labels" ]; then
+  echo "setup:github: the engineering-loop skill is not installed; run mise run agent:sync and commit its output" >&2
+  exit 1
+elif [ "${usage_dry_run:-false}" = true ]; then
+  echo "dry run: the ruleset and repository settings are left as they are"
+  exec uv run "$labels" --dry-run
+fi
+# A private repo on GitHub Free has no rulesets: GitHub answers the rules read with this 403,
+# the probe the pack's land uses. Any other error stops the task.
+free=false
+if ! probe="$(gh api 'repos/{owner}/{repo}/rules/branches/main' 2>&1 >/dev/null)"; then
+  case "$probe" in *"Upgrade to GitHub Pro"*"(HTTP 403)"*) free=true ;; *) echo "$probe" >&2; exit 1 ;; esac
+fi
+if [ "$free" = true ] && [ "${usage_revert:-false}" = true ]; then echo "no rulesets on this plan: nothing to revert"; exit 0; fi
+if [ "$free" = true ]; then
+  # Squash-only merges and head branch deletion are what Free allows; the ruleset is skipped.
+  # A standalone assignment, so a failed read stops the task before the PATCH loses the previous values.
+  settings="$(gh api 'repos/{owner}/{repo}' --jq '.allow_merge_commit, .allow_rebase_merge, .allow_squash_merge, .delete_branch_on_merge')"
+  set -- $settings
+  gh api -X PATCH 'repos/{owner}/{repo}' -F allow_merge_commit=false -F allow_rebase_merge=false \
+    -F allow_squash_merge=true -F delete_branch_on_merge=true >/dev/null
+  echo "allow_merge_commit was $1, allow_rebase_merge was $2, allow_squash_merge was $3, delete_branch_on_merge was $4;" \
+    "restore: gh api -X PATCH 'repos/{owner}/{repo}' -F allow_merge_commit=$1 -F allow_rebase_merge=$2 -F allow_squash_merge=$3 -F delete_branch_on_merge=$4"
+  echo "GitHub enforces nothing on main here (this plan has no rulesets): no ruleset applied, mise run loop:land is the only gate"
+else
+  id="$(gh api --paginate 'repos/{owner}/{repo}/rulesets' --jq '.[] | select(.source_type == "Repository" and .name == "loop-merge-queue") | .id')"
+  if [ "${usage_revert:-false}" = true ]; then
+    if [ -z "$id" ]; then echo "no loop-merge-queue ruleset: nothing to revert"; exit 0; fi
+    # A 404 means another run deleted it first: the revert is done either way.
+    out="$(gh api -X DELETE "repos/{owner}/{repo}/rulesets/$id" 2>&1)" || case "$out" in *"HTTP 404"*) ;; *) echo "$out" >&2; exit 1 ;; esac
+    echo "deleted ruleset loop-merge-queue ($id)"
+    exit 0
+  fi
+  if [ -n "$id" ]; then
+    gh api -X PUT "repos/{owner}/{repo}/rulesets/$id" --input .github/rulesets/main.json --jq '"updated ruleset loop-merge-queue (\(.id))"'
+  else
+    gh api -X POST 'repos/{owner}/{repo}/rulesets' --input .github/rulesets/main.json --jq '"created ruleset loop-merge-queue (\(.id))"'
+  fi
+  # GitHub deletes the merged head branch. allow_auto_merge is left as it is: loop:land merges directly.
+  delete="$(gh api 'repos/{owner}/{repo}' --jq .delete_branch_on_merge)"
+  gh api -X PATCH 'repos/{owner}/{repo}' -F delete_branch_on_merge=true >/dev/null
+  echo "delete_branch_on_merge was $delete, now true; restore: gh api -X PATCH 'repos/{owner}/{repo}' -F delete_branch_on_merge=$delete"
+  echo "revert the ruleset: mise run setup:github --revert"
+fi
+uv run "$labels"
+'''
+
+
+[tasks."test:fast"]
+alias = ["test", "validate"]
+description = "Validates, unit-tests and type-checks every mod, plus the kernel's self-check (scripts/check.sh)."
+run = "scripts/check.sh"
+
+[tasks."test:unit"]
+description = "Runs test:fast: this project has one test tier."
+depends = ["test:fast"]
+
+[tasks."test:changed"]
+description = "Runs test:fast: this project has no per-change test selection."
+depends = ["test:fast"]
+
+[tasks."check:unit"]
+description = "Runs test:unit in a host gate slot (scripts/gate-slot); mods measure no coverage."
+# The outer mise run already provided the tools.
+run = "scripts/gate-slot mise run --skip-tools test:unit"
+
+[tasks."setup:dev"]
+alias = "bootstrap"
+description = "Installs the git hooks on a fresh checkout, and Claude Code where it's missing (CI)."
+# The mods' checks run `claude plugin validate|test`. A developer's own claude is left alone, since
+# the mods follow the newest CLI; CI gets the version the mods were last checked on.
+run = """
+pre-commit install --allow-missing-config --install-hooks
+command -v claude >/dev/null || npm install -g @anthropic-ai/claude-code@2.1.329
+"""

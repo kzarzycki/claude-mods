@@ -1,0 +1,16 @@
+# Carries a PR review to the Approvals workflow. A review runs the PR's
+# own copy of the workflow file, so this one holds no token and no secret and does nothing: its
+# completion starts `approvals.yml` (workflow_run), which runs main's copy with the write token.
+name: Approvals relay
+on:
+  # The verifier's verdict is a review: a new or dismissed one updates the status.
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions: {}
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "relayed to the Approvals workflow"

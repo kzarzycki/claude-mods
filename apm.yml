@@ -1,0 +1,20 @@
+name: claude-mods
+version: 0.1.0
+description: "Claude Code mods: hooks, tools and panels that change how Claude Code works."
+author: "Krzysztof Zarzycki"
+# Add each coding agent's APM mapping here. Claude Code and Codex are the
+# currently implemented and acceptance-tested integrations.
+targets:
+- claude
+- codex
+dependencies:
+
+  apm:
+
+    - git: kzarzycki/agent-skills/engineering
+      ref: engineering-v0.27.0
+
+
+  mcp: []
+includes: auto
+scripts: {}

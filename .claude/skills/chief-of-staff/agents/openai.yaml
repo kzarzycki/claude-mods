@@ -1,0 +1,6 @@
+interface:
+  display_name: "Chief of staff"
+  short_description: "One contact for the owner: start a lead per ask, relay, watch and report"
+  default_prompt: "Use $chief-of-staff for this project: sort each of my messages, start a top-level lead per new ask, relay follow-ups with my words quoted, and tell me when a lead finishes, asks or stalls."
+policy:
+  allow_implicit_invocation: false

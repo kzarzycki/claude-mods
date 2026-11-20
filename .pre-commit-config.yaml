@@ -1,0 +1,86 @@
+# Managed by Copier — edit the template, then `copier update`.
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+# A hook runs at the pre-commit stage unless it names its stage.
+default_stages: [pre-commit]
+repos:
+  # Each hook runs one mise task on the staged files: the task is the linter's one definition
+  # and picks the files it applies to, and `mise run check:lint` runs every lint: task on the
+  # whole repo without pre-commit. pre-commit only stashes unstaged changes, passes the staged
+  # files and fails the commit when a fixer rewrote one. Every tool's version is in mise.toml.
+  - repo: local
+    hooks:
+      - id: lint:eof
+        name: lint:eof
+        entry: mise run lint:eof --
+        language: system
+      - id: lint:whitespace
+        name: lint:whitespace
+        entry: mise run lint:whitespace --
+        language: system
+      - id: lint:yaml
+        name: lint:yaml
+        entry: mise run lint:yaml --
+        language: system
+      - id: lint:toml
+        name: lint:toml
+        entry: mise run lint:toml --
+        language: system
+      - id: lint:json
+        name: lint:json
+        entry: mise run lint:json --
+        language: system
+      - id: lint:merge-conflict
+        name: lint:merge-conflict
+        entry: mise run lint:merge-conflict --
+        language: system
+      - id: lint:large-files
+        name: lint:large-files
+        entry: mise run lint:large-files --
+        language: system
+      - id: lint:env
+        name: lint:env
+        entry: mise run lint:env --
+        language: system
+      - id: lint:gitleaks
+        name: lint:gitleaks
+        entry: mise run lint:gitleaks --
+        language: system
+      - id: lint:detect-secrets
+        name: lint:detect-secrets
+        entry: mise run lint:detect-secrets --
+        language: system
+      - id: lint:actionlint
+        name: lint:actionlint
+        entry: mise run lint:actionlint --
+        language: system
+      - id: lint:zizmor
+        name: lint:zizmor
+        entry: mise run lint:zizmor --
+        language: system
+      # pre-commit passes no symlink to a hook unless asked.
+      - id: lint:symlinks
+        name: lint:symlinks
+        entry: mise run lint:symlinks --
+        language: system
+        types: [symlink]
+      - id: lint:commit-msg
+        name: lint:commit-msg
+        entry: mise run lint:commit-msg --
+        language: system
+        stages: [commit-msg]
+      # A push runs the changed tests and the branch's secret scan. The loop's proofs stay
+      # off the push: a push is reversible and a draft can't merge.
+      - id: test:changed
+        name: test:changed
+        entry: mise run test:changed
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: check:secrets
+        name: check:secrets
+        entry: mise run check:secrets
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
