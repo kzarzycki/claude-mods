@@ -14,5 +14,6 @@ for p in plugins/*/; do
   if [ -d "$p/.claude-plugin/types" ]; then step "$p tsc" bunx -p typescript tsc -p "$p"; else echo "skip $p tsc (load it once with claude --plugin-dir $p to lay its types)"; fi
 done
 step "code-mode kernel self-check" bun plugins/code-mode/kernel/kernel.check.ts
+step "code-mode interrupt check" bun plugins/code-mode/tests/interrupt.check.ts
 echo "$failed failed"
 exit $failed

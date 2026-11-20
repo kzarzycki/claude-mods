@@ -4,7 +4,8 @@ import type { EngineInterface, Register } from "claude-code";
 // kernel (../kernel/kernel.ts) that keeps state between calls, with Code Mode's globals ($, file,
 // edit, write, preview, tools, searchTools, ...). A script's host calls come back here as `call`
 // events; this module runs them through $ (Bash, Read, Edit and Write for the shell and file
-// globals), so every one passes Claude Code's permission checks and every other plugin's hooks.
+// globals), so each one runs Claude Code's tool with its hooks (PreToolUse, every other plugin's
+// tool.call hooks). Deny rules don't apply: they bind only the model's own calls.
 //
 // The guide below is Code Mode's own prompt text where it fits, delivered as the tool's description
 // by a tool.describe hook, or as the system prompt by a launcher that passes guide.ts's output to
@@ -48,7 +49,7 @@ await edit(target, 'maxAttempts: 3', 'maxAttempts: 5');
 
 const DECLARATIONS = `\`\`\`ts
 // The globals of a repl script, as TypeScript declarations.
-/** Runs a command as one Bash tool call, so it shows in the transcript and passes permission checks. The template text goes to the shell as written, except that \\\` and \\\${ lose their backslash, so a backtick or \${ the shell should see literally goes in as a \${} value. $ single-quotes each string \${} value itself as one argument (an array: one per item; \${{raw: s}} splices s unquoted), so write \${x} bare: inside quote marks of your own, the quotes $ added no longer protect the value. $(cmd, ms) runs a command given as a plain string, with an optional timeout in ms. A non-zero exit throws a ShellError; .nothrow() hands back the ShellOutput whatever the exit code. An exit 1 from a line whose last command is grep (also rg, egrep, fgrep), find, diff, test or \`[\`, git diff or git grep is read as that command's outcome (no match, files differ, a false test) and does not throw: exitCode is 1 and note gives the reading. Output the Bash tool cuts or saves to a file is cut the same way here. */
+/** Runs a command as one call of Claude Code's Bash tool, so it shows in the transcript and the Bash tool's hooks run on it; deny rules, which bind only your own calls, don't apply. The template text goes to the shell as written, except that \\\` and \\\${ lose their backslash, so a backtick or \${ the shell should see literally goes in as a \${} value. $ single-quotes each string \${} value itself as one argument (an array: one per item; \${{raw: s}} splices s unquoted), so write \${x} bare: inside quote marks of your own, the quotes $ added no longer protect the value. $(cmd, ms) runs a command given as a plain string, with an optional timeout in ms. A non-zero exit throws a ShellError; .nothrow() hands back the ShellOutput whatever the exit code. An exit 1 from a line whose last command is grep (also rg, egrep, fgrep), find, diff, test or \`[\`, git diff or git grep is read as that command's outcome (no match, files differ, a false test) and does not throw: exitCode is 1 and note gives the reading. Output the Bash tool cuts or saves to a file is cut the same way here. */
 declare function $(strings: TemplateStringsArray, ...values: unknown[]): ShellPromise;
 declare function $(cmd: string, timeoutMs?: number): ShellPromise;
 declare namespace $ {
@@ -92,7 +93,7 @@ declare function file(path: string): {
   text(): Promise<string>;
   json(): Promise<unknown>;
   lines(): Promise<string[]>;
-  /** checks the filesystem directly, not through Read: it tells only whether the path exists */
+  /** whether the path exists, asked as a \`test -e\` Bash tool call */
   exists(): Promise<boolean>;
   /** lines from the 1-based line offset, at most limit (2000 by default) */
   slice(offset?: number, limit?: number): Promise<string>;
@@ -281,6 +282,8 @@ async function runScript($: EngineInterface, code: string, maxCalls: number, sig
 }
 
 async function drive($: EngineInterface, code: string, maxCalls: number, run: { cell: string }, at: string, signal?: AbortSignal): Promise<Event> {
+  const interrupted: Event = { status: "error", output: "", error: "interrupted" };
+  if (signal?.aborted) return interrupted;
   let ev: Event = await post($, "/run", { code, cwd: await $.session.cwd() }, at);
   const cell = (run.cell = ev.cell ?? "");
   let calls = 0;
@@ -288,7 +291,7 @@ async function drive($: EngineInterface, code: string, maxCalls: number, run: { 
     // An interrupt that came before the cell id was known (during /run) had nothing to cancel then.
     if (signal?.aborted) {
       await post($, "/cancel", { cell, why: "interrupted" }, at).catch(() => {});
-      return { status: "error", output: "", error: "interrupted" };
+      return interrupted;
     }
     if (ev.status === "wait") {
       // The kernel answers "wait" every ~20 s so no request outlives the host's fetch limit.
@@ -325,7 +328,8 @@ async function drive($: EngineInterface, code: string, maxCalls: number, run: { 
       ev = await post($, "/resume", { callId, ok: false, error: err instanceof Error ? err.message : String(err), cell }, at);
     }
   }
-  return ev;
+  // A script that ended while the interrupt was on its way still reports the interrupt, not its value.
+  return signal?.aborted ? interrupted : ev;
 }
 
 function render(ev: Event): string {

@@ -31,8 +31,10 @@ claude plugin install ttsr-rules@claude-mods
 claude plugin install compact-methods@claude-mods
 claude plugin install self-compact@claude-mods
 claude plugin install agent-hub@claude-mods
-claude plugin install code-mode@claude-mods      # replaces eval-kernel: uninstall that first
+claude plugin install code-mode@claude-mods      # replaces eval-kernel: see the note below
 ```
+
+Moving from eval-kernel (code-mode's old name): `claude plugin uninstall eval-kernel@claude-mods`, then `claude plugin install code-mode@claude-mods`, so the model isn't offered two REPLs.
 
 Pick any subset; each mod works alone, and the three that make decisions pull in `decision-model`. Inside a session, `/plugin` does the same from a menu. `claude plugin marketplace update claude-mods` fetches new versions.
 
@@ -60,7 +62,7 @@ Options of mods loaded this way are under `<name>@inline` (in `/config`, or `cla
   (`decision-model@inline` for a clone), or set `OPENROUTER_API_KEY`. A TypeSafe key needs `"endpoint":"typesafe"` too; `endpoint` also takes the URL of any other System One server, with `model` naming its model. `/decision` shows which backend answers.
 - **`code-mode`** needs [Bun](https://bun.sh) on the PATH (or its `bun` option set to one). It has two modes, picked per request from the tools the model is offered (`mode` option: `auto`, `preferred`, `exclusive`):
   - **Preferred** (a normal session): the other tools stay, and the guide says `repl` is the better way for shell, file and multi-step work, with a direct call still fine for one call whose whole output the model needs.
-  - **Exclusive**: start the session with the built-ins denied, `claude --disallowedTools Bash Read Edit Write Glob Grep NotebookEdit WebFetch WebSearch`, and `repl` is the model's one way to read, write, run commands and fetch. Scripts still reach those tools, because a deny rule stops only the model, not a mod's `$.tool.call`. Task, Skill, ToolSearch and MCP tools stay offered by design: they start subagents, load instructions and load deferred tools, which a script can't do for the model.
+  - **Exclusive**: start the session with the built-ins denied, `claude --disallowedTools Bash Read Edit Write Glob Grep NotebookEdit WebFetch WebSearch`, and `repl` is the model's one way to read, write, run commands and fetch. Scripts still reach those tools, because a deny rule stops only the model, not a mod's `$.tool.call`. Agent, Skill, ToolSearch, Workflow and MCP tools stay offered by design: they start subagents, load instructions, load deferred tools and run workflows, which a script can't do for the model.
   - **The guide in the system prompt**: the mod can only make the guide repl's tool description, because an organization's sec-default mod skips a person's prompt hooks. A launcher can put it in the system prompt instead: `bun plugins/code-mode/guide.ts [exclusive|preferred] > guide.md`, then `claude --append-system-prompt-file guide.md` with the env var `CODE_MODE_GUIDE=system` (in `--settings` `env`), so repl's description points there instead of repeating it. Under Omnigent use the file flag: it refuses a launch argument over 4,096 characters.
   - **As an Omnigent agent**: list the denied tools as patterns, `disallowed_tools: ["Bash(*)", "Read(*)", ...]`. A plain name there also becomes Omnigent's server deny policy, whose PreToolUse hook refuses the mod's calls too ("Tool 'Bash' is forbidden by the agent spec"); a pattern only reaches the harness flag, and still hides the tool from the model.
 - **TTSR rules** are Markdown files in `.claude/ttsr/` (project) or `~/.claude/ttsr/`; existing omp rule folders are read too. See `e2e/ttsr.sh` for one of each kind.
@@ -114,5 +116,5 @@ Each item was observed in a run, not read from docs.
   - `$` output is what the Bash tool returns; there is no spill-file reading of large outputs.
   - Timers a script sets aren't cleared when it ends.
   - The context isn't sealed: `import`, Bun and `node:*` work, and that work goes around Claude Code's permissions. The prompt tells the model to use the globals.
-  - Permissions: every `repl` call is one permission decision. The tool calls a script makes go through `$.tool.call`: hooks (PreToolUse, other mods' `tool.call` hooks) run on each, but deny rules don't, because they bind only the model's own calls. Exclusive mode depends on that. `file().exists()` checks the filesystem directly, not through Read: it tells only whether a path exists.
+  - Permissions: every `repl` call is one permission decision. The tool calls a script makes go through `$.tool.call`: hooks (PreToolUse, other mods' `tool.call` hooks) run on each, but deny rules don't, because they bind only the model's own calls. Exclusive mode depends on that. `file().exists()` is a `test -e` call of the Bash tool, so it passes through the same hooks.
 - **omp features left out of this MVP.** Snapcompact, omp's soft compaction, idle compaction, TTSR rules on streamed text (Claude Code can't take back text it has already shown), and multi-vendor models.

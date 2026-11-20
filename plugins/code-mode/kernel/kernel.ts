@@ -331,8 +331,11 @@ g.file = (path: string) => ({
   text: () => readAll(path),
   json: async () => JSON.parse(await readAll(path)),
   lines: async () => (await readAll(path)).split("\n"),
-  // Checks the filesystem directly, not through Read: it tells only whether the path exists.
-  exists: async () => existsSync(abs(path)),
+  exists: async () => {
+    const out = await runShell(`test -e ${quote(abs(path))}`, { throws: false });
+    if (out.exitCode === 0 || out.exitCode === 1) return out.exitCode === 0;
+    throw new Error(`file(${path}).exists(): ${out.output}`);
+  },
   slice: async (offset = 1, limit = READ_PAGE) => (await readLines(path, offset, limit)).content,
 });
 g.write = async (path: string, content: string) => {
