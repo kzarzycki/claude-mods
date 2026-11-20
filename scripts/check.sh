@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fast checks, no model calls: validate, unit-test and type-check every mod, then the eval kernel's
+# Fast checks, no model calls: validate, unit-test and type-check every mod, then the code-mode kernel's
 # self-check. The e2e checks (real sessions, real model calls) are e2e/run.sh.
 cd "$(dirname "$0")/.."
 # A file per run, so checks in two worktrees at once don't read each other's output.
@@ -13,6 +13,7 @@ for p in plugins/*/; do
   # The engine lays the types into .claude-plugin/types the first time it loads the mod.
   if [ -d "$p/.claude-plugin/types" ]; then step "$p tsc" bunx -p typescript tsc -p "$p"; else echo "skip $p tsc (load it once with claude --plugin-dir $p to lay its types)"; fi
 done
-step "eval-kernel kernel self-check" bun plugins/eval-kernel/kernel/kernel.check.ts
+step "code-mode kernel self-check" bun plugins/code-mode/kernel/kernel.check.ts
+step "code-mode interrupt check" bun plugins/code-mode/tests/interrupt.check.ts
 echo "$failed failed"
 exit $failed

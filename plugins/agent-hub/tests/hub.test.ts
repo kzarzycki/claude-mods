@@ -3,7 +3,7 @@ import { expect, test } from "claude-code/testing";
 const cmd = (args: string) => ({ command: "hub", args, origin: { kind: "composer" as const }, presentation: { isFullscreen: false, columns: 120 } });
 
 test("the hub tracks a subagent's model, turns and tokens and draws them in the pane", async ($, on) => {
-  on("agent.list", () => ({ value: [{ id: "agent-one", description: "scan logs", type: "general-purpose", status: "completed" }] }));
+  on("agent.list", () => ({ value: [{ id: "agent-one", description: "scan logs", type: "general-purpose", status: "completed" as const, kind: "local_agent" as const, taskStatus: "completed" as const, label: "scan logs", startTime: 0, cwd: "/repo", tokenCount: 0, tokenSamples: [], hasRow: false }] }));
   on("ui.open", () => ({ value: { isPlaced: false, reason: "headless" } }));
   on("turn.step", async function* ($, e) {
     return { turnId: e.turnId, index: e.index, answer: "found 3 timeouts", toolUses: [], stopReason: "end_turn" as const, usage: null };

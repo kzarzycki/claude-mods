@@ -30,7 +30,7 @@ components:
   area:auto-effort: plugins/auto-effort, effort picked per turn
   area:compact-methods: plugins/compact-methods
   area:decision-model: plugins/decision-model, the $.decision backend the deciding mods share
-  area:eval-kernel: plugins/eval-kernel, the eval tool and its Bun kernel
+  area:code-mode: plugins/code-mode, the repl tool and its Bun kernel
   area:resume-on-stop: plugins/resume-on-stop
   area:self-compact: plugins/self-compact, compaction at task boundaries
   area:ttsr-rules: plugins/ttsr-rules, rules matched against the model's stream

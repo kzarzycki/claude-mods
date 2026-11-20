@@ -36,9 +36,9 @@
       "description": "Agent hub: a pane listing this session's subagents with status, model, turns and tokens, and a box to steer a running one."
     },
     {
-      "name": "eval-kernel",
-      "source": "./plugins/eval-kernel",
-      "description": "A persistent JavaScript kernel the model drives with one `eval` tool: state survives between cells, and cells call Claude Code tools, models and subagents."
+      "name": "code-mode",
+      "source": "./plugins/code-mode",
+      "description": "Claude Code's Code Mode as a mod: one `repl` tool runs JavaScript in a persistent kernel with $, file, edit, write, tools and agent(). Preferred beside the other tools, or the one way to work when the session denies them."
     },
     {
       "name": "self-compact",

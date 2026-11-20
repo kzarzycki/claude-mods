@@ -26,6 +26,23 @@ claude_tty() {
   sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$log.raw" | tr '\r' '\n' > "$log"
 }
 
+# want <case>: true when E2E_CASES is unset or names the case, so one case can run alone.
+want() { [ -z "${E2E_CASES:-}" ] || [[ " $E2E_CASES " == *" $1 "* ]]; }
+# model <case>: true when a logged-in Claude Code answers. Otherwise prints SKIP and counts a failure,
+# so a run without a login never reads as a pass. The probe runs once per script.
+MODEL_OK=""
+model() {
+  if [ -z "$MODEL_OK" ]; then
+    local r
+    r=$(printf 'Reply with only the word OK' | env -u CLAUDE_CODE_CHILD_SESSION timeout 60 claude -p --model haiku --output-format json 2>/dev/null | jq -r 'if .is_error then "error: " + .result else .result end' 2>/dev/null)
+    if [[ "$r" == *OK* ]]; then MODEL_OK=yes; else MODEL_OK="no (${r:-no answer})"; fi
+  fi
+  [ "$MODEL_OK" = yes ] && return 0
+  echo "SKIP $1: needs a logged-in Claude Code; the probe got $MODEL_OK"
+  FAILED=$((FAILED + 1))
+  return 1
+}
+
 pass() { echo "ok   $1"; }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 # expect <name> <file> <extended regex>
