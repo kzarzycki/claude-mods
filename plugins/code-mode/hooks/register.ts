@@ -283,8 +283,11 @@ async function runScript($: EngineInterface, code: string, maxCalls: number, sig
 
 async function drive($: EngineInterface, code: string, maxCalls: number, run: { cell: string }, at: string, signal?: AbortSignal): Promise<Event> {
   const interrupted: Event = { status: "error", output: "", error: "interrupted" };
+  // Checked after every await before /run: an interrupt before the cell exists has nothing to cancel,
+  // so the script must not start.
+  const cwd = await $.session.cwd();
   if (signal?.aborted) return interrupted;
-  let ev: Event = await post($, "/run", { code, cwd: await $.session.cwd() }, at);
+  let ev: Event = await post($, "/run", { code, cwd }, at);
   const cell = (run.cell = ev.cell ?? "");
   let calls = 0;
   while (ev.status === "call" || ev.status === "wait") {
@@ -322,7 +325,10 @@ async function drive($: EngineInterface, code: string, maxCalls: number, run: { 
       continue;
     }
     try {
-      ev = await post($, "/resume", { callId, ok: true, value: await hostCall($, kind, payload), cell }, at);
+      const value = await hostCall($, kind, payload);
+      // Interrupted during the call: the abort listener already cancelled the cell, so don't resume it.
+      if (signal?.aborted) return interrupted;
+      ev = await post($, "/resume", { callId, ok: true, value, cell }, at);
     } catch (err) {
       if (err instanceof KernelLost) throw err;
       ev = await post($, "/resume", { callId, ok: false, error: err instanceof Error ? err.message : String(err), cell }, at);

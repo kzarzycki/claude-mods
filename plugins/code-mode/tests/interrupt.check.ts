@@ -13,8 +13,12 @@ register(((name: string, match: object | Function, handler?: Function) => {
 }) as never, {} as never);
 
 type Reply = (path: string, abort: () => void) => object;
+type Hooks = { cwd?: (abort: () => void) => void; tool?: (abort: () => void) => void };
 const done = { status: "done", cell: "g.k1", output: "", value: "finished" };
-const cases: [string, Reply, (requests: string[]) => boolean][] = [
+const toolCall = { status: "call", cell: "g.k1", callId: "c1", kind: "tool", payload: { tool: "Read", args: { file_path: "/repo/a" } } };
+const cases: [string, Reply, (requests: string[]) => boolean, Hooks?][] = [
+  ["abort while the cwd is looked up: the script is never submitted", p => (p === "/health" ? { ok: true } : done), r => !r.includes("/run"), { cwd: abort => abort() }],
+  ["abort during a host tool call: the cell is cancelled, not resumed", p => (p === "/run" ? toolCall : p === "/resume" ? done : { ok: true }), r => r.includes("/cancel") && !r.includes("/resume"), { tool: abort => abort() }],
   ["abort before /run: the script is never submitted", (p, abort) => (p === "/health" && abort(), p === "/health" ? { ok: true } : done), r => !r.includes("/run")],
   ["abort during /run, first answer wait: the cell is cancelled", (p, abort) => (p === "/run" ? (abort(), { status: "wait", cell: "g.k1" }) : p === "/next" ? done : { ok: true }), r => r.includes("/cancel")],
   ["abort during /run, the script already done: interrupted, not its value", (p, abort) => (p === "/run" ? (abort(), done) : { ok: true }), () => true],
@@ -22,11 +26,12 @@ const cases: [string, Reply, (requests: string[]) => boolean][] = [
 ];
 
 let failed = 0;
-for (const [name, reply, sent] of cases) {
+for (const [name, reply, sent, during = {}] of cases) {
   const controller = new AbortController();
   const requests: string[] = [];
   const engine = {
-    session: { cwd: async () => "/repo" },
+    session: { cwd: async () => (await Promise.resolve(), during.cwd?.(() => controller.abort()), "/repo") },
+    tool: { call: async () => (await Promise.resolve(), during.tool?.(() => controller.abort()), { result: "contents" }) },
     http: { fetch: async (url: string) => {
       const path = new URL(url).pathname;
       requests.push(path);
