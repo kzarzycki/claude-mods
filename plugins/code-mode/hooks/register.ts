@@ -92,6 +92,7 @@ declare function file(path: string): {
   text(): Promise<string>;
   json(): Promise<unknown>;
   lines(): Promise<string[]>;
+  /** checks the filesystem directly, not through Read: it tells only whether the path exists */
   exists(): Promise<boolean>;
   /** lines from the 1-based line offset, at most limit (2000 by default) */
   slice(offset?: number, limit?: number): Promise<string>;
@@ -284,12 +285,16 @@ async function drive($: EngineInterface, code: string, maxCalls: number, run: { 
   const cell = (run.cell = ev.cell ?? "");
   let calls = 0;
   while (ev.status === "call" || ev.status === "wait") {
+    // An interrupt that came before the cell id was known (during /run) had nothing to cancel then.
+    if (signal?.aborted) {
+      await post($, "/cancel", { cell, why: "interrupted" }, at).catch(() => {});
+      return { status: "error", output: "", error: "interrupted" };
+    }
     if (ev.status === "wait") {
       // The kernel answers "wait" every ~20 s so no request outlives the host's fetch limit.
       ev = await post($, "/next", { cell }, at);
       continue;
     }
-    if (signal?.aborted) return { status: "error", output: "", error: "interrupted" };
     if (++calls > maxCalls) {
       const error = `the script made more than ${maxCalls} host calls and was stopped`;
       await post($, "/cancel", { cell, why: error }, at).catch(() => {});

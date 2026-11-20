@@ -53,9 +53,13 @@ expect "the one agent's typed answer checks out" "$T/synth.jsonl" 'agentCorrect:
 # still reach Bash and Read (a deny rule stops only the model).
 lines=$(wc -l < "$ROOT/.claude-plugin/marketplace.json" | tr -d ' ')
 claude_run "$T/excl.jsonl" "How many lines does $ROOT/.claude-plugin/marketplace.json have, and what does \`uname -s\` print? Reply as: LINES=<n> OS=<name>" "${E[@]}" \
-  --disallowedTools Bash Read Edit Write Glob Grep NotebookEdit --allowedTools "mcp__code-mode__repl"
+  --disallowedTools Bash Read Edit Write Glob Grep NotebookEdit WebFetch WebSearch --allowedTools "mcp__code-mode__repl"
 expect "exclusive mode: the model works through repl" "$T/excl.jsonl" '"name":"mcp__code-mode__repl"'
-expect_not "exclusive mode: no denied built-in is called directly" "$T/excl.jsonl" '"type":"tool_use","id":"[^"]*","name":"(Bash|Read)"'
+# Task, Skill, ToolSearch and MCP tools stay offered by design (see the README's exclusive mode).
+offered=$(jq -r 'select(.type == "system" and .subtype == "init") | .tools[]' "$T/excl.jsonl" | grep -xE 'Bash|Read|Edit|Write|Glob|Grep|NotebookEdit|WebFetch|WebSearch' | tr '\n' ' ')
+if [ -z "$offered" ] && grep -q '"subtype":"init"' "$T/excl.jsonl"; then pass "exclusive mode: no denied tool is offered"; else fail "exclusive mode: offered $offered"; fi
+others=$(jq -r 'select(.type == "assistant") | .message.content[]? | select(.type == "tool_use") | .name' "$T/excl.jsonl" | grep -vx 'mcp__code-mode__repl' | sort -u | tr '\n' ' ')
+if [ -z "$others" ]; then pass "exclusive mode: every model tool call is repl"; else fail "exclusive mode: the model also called $others"; fi
 expect "exclusive mode: scripts still reach the denied tools" "$T/excl.jsonl" "LINES=$lines OS=$(uname -s)"
 # The guide reaches the model: it reads files and runs commands through the globals, not Node's
 # child_process or fs, which go around Claude Code.

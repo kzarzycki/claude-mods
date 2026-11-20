@@ -68,6 +68,8 @@ test("the Code Mode guide is the tool's description: preferred beside Bash, excl
   await start($, on, () => ({ status: "done", output: "" }));
   const describe = () => $.tool.describe({ tool: "mcp__code-mode__repl", description: "short", provider: { plugin: "code-mode", tier: "user" } } as any);
   expect((await describe()).description).toContain("Prefer `repl`");
+  listed = ["mcp__code-mode__repl", "Read", "Edit"]; // only Bash missing: still preferred
+  expect((await describe()).description).toContain("Prefer `repl`");
   listed = ["mcp__code-mode__repl", "ToolSearch"];
   expect((await describe()).description).toContain("Work through `repl`");
 });

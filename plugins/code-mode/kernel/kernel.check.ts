@@ -35,6 +35,8 @@ function fakeTool(tool: string, a: any): unknown {
     try { text = readFileSync(a.file_path, "utf8"); } catch { return { text: "<tool_use_error>File does not exist.</tool_use_error>", isError: true }; }
     const all = text.split("\n");
     const lines = all.slice(a.offset - 1, a.offset - 1 + a.limit);
+    // Read refuses a page over its token budget; here, over 8000 characters.
+    if (lines.join("\n").length > 8000) return { text: "File content (9999 tokens) exceeds maximum allowed tokens (2000). Use offset and limit.", isError: true };
     return { text: "numbered", result: { type: "text", file: { filePath: a.file_path, content: lines.join("\n"), numLines: lines.length, startLine: a.offset, totalLines: all.length } }, isError: false };
   }
   if (tool === "Edit") {
@@ -239,6 +241,16 @@ try {
   const u2 = await run("beforeCancel + '-still'");
   check("an unawaited call doesn't crash the kernel", u1.value === "left" && u2.value === "kept-still", { u1, u2 });
 
+  // A page Read refuses as too large is read again in smaller pages, still through Read.
+  const bigFile = Array.from({ length: 3000 }, (_, i) => `line ${i}`).join("\n");
+  writeFileSync(join(dir, "big.txt"), bigFile);
+  writeFileSync(join(dir, "wide.txt"), "x".repeat(9000));
+  const bigR = await run("(await file('big.txt').text()).length");
+  const wideR = await run("await file('wide.txt').text()");
+  // 3000 lines in one or two pages of 2000 would be 2 Reads; refused pages make it more
+  check("a file too large for one Read is read in smaller pages through Read", bigR.value === String(bigFile.length) && bigR.calls.length > 2 && bigR.calls.every(c => c === "tool:Read"), bigR);
+  check("a single line too large for Read is an error, not a direct read", wideR.status === "error" && /exceeds/.test(wideR.error), wideR);
+
   // A kernel that replaces an earlier one of the same session says so in its first script.
   const mk = join(dir, "ran.marker"), sock2 = sock + ".2";
   let k2 = await kernel(sock2, mk);
@@ -248,6 +260,20 @@ try {
   k2 = await kernel(sock2, mk);
   const again = await run("3", () => null, sock2);
   k2.kill();
+  // An answer to a call of the earlier kernel must not reach a script of the new one.
+  await k2.exited;
+  k2 = await kernel(sock2, mk);
+  const oldRun = await post("/run", { code: "await tools.Bash({ command: 'old' })", cwd: dir }, sock2);
+  const oldCall = oldRun.status === "call" ? oldRun : await post("/next", { cell: oldRun.cell }, sock2);
+  k2.kill();
+  await k2.exited;
+  k2 = await kernel(sock2, mk);
+  const newRun = await post("/run", { code: "await tools.Bash({ command: 'new' })", cwd: dir }, sock2);
+  const newCall = newRun.status === "call" ? newRun : await post("/next", { cell: newRun.cell }, sock2);
+  const stale = await post("/answer", { callId: oldCall.callId, ok: true, value: { text: "stale" } }, sock2);
+  const fresh = await post("/resume", { callId: newCall.callId, ok: true, value: { text: "fresh" }, cell: newCall.cell }, sock2);
+  k2.kill();
+  check("an answer from before a restart is dropped, not given to a new script", oldCall.callId !== newCall.callId && !!stale.dropped && String(fresh.value).includes("fresh"), { oldCall, newCall, stale, fresh });
   check("a restarted kernel says its variables are gone, once", !fresh1.output.includes("[repl]") && !fresh2.output.includes("[repl]") && again.output.includes("started fresh"), { fresh1, again });
 
   const vars = await get("/vars");

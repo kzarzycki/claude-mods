@@ -91,12 +91,16 @@ const pending = new Map<string, { cell: Cell; resolve: (v: unknown) => void; rej
 /** Calls a cell left unanswered when it ended: a late answer to one is dropped, not refused. */
 const cancelled = new Set<string>();
 let callSeq = 0, cellSeq = 0;
+/** This kernel's generation, in every call and cell id: the supervisor restarts the kernel on the same
+ *  socket, and a late answer meant for a script of the earlier kernel must not reach a new one. */
+const GEN = `${process.pid.toString(36)}${Date.now().toString(36)}`;
+const mine = (id: string) => id.startsWith(`${GEN}.`);
 
 function host(kind: string, payload: unknown): Promise<any> {
   const c = current.getStore();
   if (!c) return Promise.reject(new Error("host calls are only available while a script runs"));
   if (c.ended) return Promise.reject(new Error("the script was stopped or has ended"));
-  const callId = `c${++callSeq}`;
+  const callId = `${GEN}.c${++callSeq}`;
   return new Promise((res, rej) => {
     pending.set(callId, { cell: c, resolve: res, reject: rej });
     c.push({ status: "call", callId, kind, payload });
@@ -301,30 +305,33 @@ async function readLines(path: string, offset: number, limit: number) {
   if (typeof f?.content !== "string") throw new Error(`file(${path}): not a text file`);
   return f as { content: string; numLines: number; startLine: number; totalLines: number };
 }
+/** The whole file, page by page through Read, so Read's hooks see every read. A page Read refuses as
+ *  too large is asked for again with half the lines; a single line too large is an error. */
 async function readAll(path: string) {
-  // ponytail: Read pages of 2000 lines, so a file whose lines Read cuts or refuses (too large)
-  // falls back to a direct read. Upgrade path: page by size as well.
-  try {
-    const parts: string[] = [];
-    let next = 1, total = Infinity;
-    while (next <= total) {
-      const f = await readLines(path, next, READ_PAGE);
-      parts.push(f.content);
-      total = f.totalLines;
-      if (!f.numLines) break;
-      next = f.startLine + f.numLines;
+  const parts: string[] = [];
+  let next = 1, total = Infinity, limit = READ_PAGE;
+  while (next <= total) {
+    let f;
+    try {
+      f = await readLines(path, next, limit);
+    } catch (err) {
+      if (limit === 1 || !/exceeds|too large|maximum/i.test(String(err))) throw err;
+      limit = Math.ceil(limit / 2);
+      continue;
     }
-    return parts.join("\n");
-  } catch (err) {
-    if (!/exceeds|too large|maximum/i.test(String(err))) throw err;
-    return await Bun.file(abs(path)).text();
+    parts.push(f.content);
+    total = f.totalLines;
+    if (!f.numLines) break;
+    next = f.startLine + f.numLines;
   }
+  return parts.join("\n");
 }
 g.file = (path: string) => ({
   name: abs(path),
   text: () => readAll(path),
   json: async () => JSON.parse(await readAll(path)),
   lines: async () => (await readAll(path)).split("\n"),
+  // Checks the filesystem directly, not through Read: it tells only whether the path exists.
   exists: async () => existsSync(abs(path)),
   slice: async (offset = 1, limit = READ_PAGE) => (await readLines(path, offset, limit)).content,
 });
@@ -537,7 +544,7 @@ const RESTARTED = "[repl] This kernel started fresh since your last script (the 
 let ranHere = false;
 
 function start(code: string, cwd: string): Cell {
-  const c = new Cell(`k${++cellSeq}`, cwd);
+  const c = new Cell(`${GEN}.k${++cellSeq}`, cwd);
   cells.set(c.id, c);
   if (marker && !ranHere) {
     if (existsSync(marker)) c.output.push(RESTARTED);
@@ -599,6 +606,11 @@ Bun.serve({
     }
     if (req.method === "POST" && (url.pathname === "/resume" || url.pathname === "/answer")) {
       const { callId, ok, value, error, cell } = (await req.json()) as { callId: string; ok: boolean; value?: unknown; error?: string; cell?: string };
+      // An answer to a call of an earlier kernel: /answer drops it, /resume says its script is gone.
+      if (!mine(String(callId))) {
+        if (url.pathname === "/answer") return json({ ok: true, dropped: "from an earlier kernel" });
+        return missing(String(cell));
+      }
       const p = pending.get(callId);
       if (!p && cancelled.delete(callId)) {
         if (url.pathname === "/answer") return json({ ok: true });
