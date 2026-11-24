@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 
 const WAIT_MS = 300;
 const sock = join(tmpdir(), `code-mode-check-${process.pid}.sock`);
-const child = Bun.spawn(["bun", join(import.meta.dir, "kernel.ts"), sock, String(WAIT_MS)], { stdout: "pipe", stderr: "inherit" });
+const child = Bun.spawn([process.execPath, join(import.meta.dir, "kernel.ts"), sock, String(WAIT_MS)], { stdout: "pipe", stderr: "inherit" });
 await child.stdout.getReader().read(); // ready line
 const dir = mkdtempSync(join(tmpdir(), "code-mode-check-"));
 
@@ -15,7 +15,7 @@ const post = (path: string, body: unknown, at = sock) =>
   fetch(`http://localhost${path}`, { method: "POST", body: JSON.stringify(body), unix: at } as any).then(r => r.json() as Promise<any>);
 /** A kernel of its own, for checks that restart one. */
 async function kernel(path: string, marker: string) {
-  const k = Bun.spawn(["bun", join(import.meta.dir, "kernel.ts"), path, String(WAIT_MS), marker], { stdout: "pipe", stderr: "inherit" });
+  const k = Bun.spawn([process.execPath, join(import.meta.dir, "kernel.ts"), path, String(WAIT_MS), marker], { stdout: "pipe", stderr: "inherit" });
   await k.stdout.getReader().read();
   return k;
 }

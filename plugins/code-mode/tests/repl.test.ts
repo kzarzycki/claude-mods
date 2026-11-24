@@ -7,13 +7,15 @@ import { expect, test } from "claude-code/testing";
 type Ev = Record<string, unknown>;
 
 /** Start the session against a fake kernel whose /run and /resume replies come from `script`. */
-async function start($: any, on: On, script: (path: string, body: any) => Ev, registered: any[] = []) {
+async function start($: any, on: On, script: (path: string, body: any) => Ev, registered: any[] = [], bunAt = "/usr/bin/bun") {
   const posts: { path: string; body: any }[] = [];
   on("session.id", () => ({ value: "session-one" }));
   on("tool.register", ($, e) => (registered.push(e), { value: { tool: `mcp__code-mode__${e.name}` } }));
   on("command.register", ($, e) => ({ value: { command: e.name } }));
-  on("process.spawn", async function* () {
-    return { value: { code: 0, signal: null } };
+  // hooks/find-bun.sh answers with bunAt ("" for none); any other spawn is the kernel, which ends at once.
+  on("process.spawn", async function* (_$, e) {
+    if (e.argv.some((a: string) => a.endsWith("find-bun.sh")) && bunAt) yield { stream: "stdout", text: `${bunAt}\n` } as never;
+    return { value: { code: bunAt ? 0 : 1, signal: null } };
   });
   on("clock.sleep", () => ({ value: undefined }));
   on("session.cwd", () => ({ value: "/repo" }));
@@ -102,3 +104,12 @@ test("/next and /resume name the script's cell, so scripts running side by side 
 
 // agent() isn't covered here: the agent id comes only from core (a test hook answering
 // agent.spawn starts no subagent and gets none), so e2e/repl.sh covers it with a real one.
+
+test("with no bun found, repl fails with one line naming the install command, and no kernel starts", async ($, on) => {
+  const posts = await start($, on, () => ({ status: "done", output: "", value: "1" }), [], "");
+  const r = await $.tool.call({ tool: "mcp__code-mode__repl", code: "1" });
+  expect(r.isError).toBe(true);
+  expect(String(r.result)).toContain("curl -fsSL https://bun.sh/install | bash");
+  expect(String(r.result).trim().split("\n").length).toBe(1);
+  expect(posts).toEqual([]);
+});
