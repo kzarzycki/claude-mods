@@ -149,7 +149,7 @@ let sock = "";
 // ponytail: a subagent's kernel lives as long as the session (it may be resumed). Upgrade path: stop it after the agent's last turn.
 const agentKernels = new Map<string, string>();
 /** Session id and options, kept from session.start for kernels started later. */
-let session = { id: "", bun: "bun", cwd: "" };
+let session = { id: "", bun: "bun", cwd: "", bunMissing: false };
 /** Subagents a running script waits on: agentId → the kernel's callId, the schema its answer must match and the kernel it waits in. */
 const agentCalls = new Map<string, { callId: string; schema?: unknown; at: string }>();
 
@@ -193,12 +193,26 @@ async function post($: EngineInterface, path: string, body: unknown = {}, at = s
 
 /** Start a kernel on a fresh socket and keep it running; key names its marker file (main or an agent id). */
 function startKernel($: EngineInterface, key: string): string {
+  if (session.bunMissing) return "";
   // Unix socket paths are capped near 104 bytes, so /tmp rather than the plugin's folder.
   const at = `/tmp/code-mode-${session.id.slice(0, 8)}-${Math.random().toString(36).slice(2, 8)}.sock`;
   // The marker outlives a mod reload, so a kernel that replaces an earlier one can say variables are gone.
   const marker = `/tmp/code-mode-${session.id}-${key}.ran`;
   void supervise($, [session.bun, `${$.plugin.root}/kernel/kernel.ts`, at, "20000", marker], session.cwd);
   return at;
+}
+
+/** The one line a repl call fails with when no bun was found. */
+export const BUN_MISSING = "bun was not found (looked in $BUN_INSTALL/bin, PATH, ~/.bun/bin, /opt/homebrew/bin). Install it: curl -fsSL https://bun.sh/install | bash";
+
+/** The bun to run: the configured command when it isn't the default, else hooks/find-bun.sh's answer ("" when none). */
+async function resolveBun($: EngineInterface, configured: string): Promise<string> {
+  if (configured !== "bun") return configured;
+  let found = "";
+  try {
+    for await (const chunk of $.process.spawn({ argv: ["sh", `${$.plugin.root}/hooks/find-bun.sh`] })) found += chunk.text;
+  } catch {}
+  return found.trim();
 }
 
 /** The kernel a repl call runs in: the session's, or with "own" subagents, the calling subagent's. */
@@ -265,6 +279,7 @@ async function hostCall($: EngineInterface, kind: string, p: any): Promise<unkno
 
 /** Run a script to its end in the kernel at `at`, answering its host calls. */
 async function runScript($: EngineInterface, code: string, maxCalls: number, signal?: AbortSignal, at = sock): Promise<Event> {
+  if (session.bunMissing) return { status: "error", output: "", error: BUN_MISSING };
   if (!(await ready($, at))) return { status: "error", output: "", error: "the kernel is not running (is bun installed? see /repl)" };
   // An interrupt cancels this script alone: other scripts in the kernel, and its variables, stay.
   const run = { cell: "" };
@@ -356,8 +371,9 @@ export const register: Register = (on, options) => {
   const subagents = options.subagents === "own" ? "own" : "shared";
 
   on("session.start", async ($, e, next) => {
-    session = { id: await $.session.id(), bun, cwd: e.cwd };
-    sock = startKernel($, "main");
+    const resolved = await resolveBun($, bun);
+    session = { id: await $.session.id(), bun: resolved, cwd: e.cwd, bunMissing: resolved === "" };
+    if (!session.bunMissing) sock = startKernel($, "main");
     await $.tool.register({
       name: TOOL,
       description: DESCRIPTION,
