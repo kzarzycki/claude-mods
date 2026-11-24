@@ -7,10 +7,10 @@ import { expect, test } from "claude-code/testing";
 type Ev = Record<string, unknown>;
 
 /** Start the session against a fake kernel whose /run and /resume replies come from `script`. */
-async function start($: any, on: On, script: (path: string, body: any) => Ev) {
+async function start($: any, on: On, script: (path: string, body: any) => Ev, registered: any[] = []) {
   const posts: { path: string; body: any }[] = [];
   on("session.id", () => ({ value: "session-one" }));
-  on("tool.register", ($, e) => ({ value: { tool: `mcp__code-mode__${e.name}` } }));
+  on("tool.register", ($, e) => (registered.push(e), { value: { tool: `mcp__code-mode__${e.name}` } }));
   on("command.register", ($, e) => ({ value: { command: e.name } }));
   on("process.spawn", async function* () {
     return { value: { code: 0, signal: null } };
@@ -58,6 +58,12 @@ test("a wait event asks the kernel again until the script ends", async ($, on) =
   const r = await $.tool.call({ tool: "mcp__code-mode__repl", code: "await sleep(60000)\n'slept'" });
   expect(String(r.result)).toBe("=> slept");
   expect(posts.map(p => p.path)).toEqual(["/run", "/next", "/next"]);
+});
+
+test("repl takes no free-text label: Claude Code would refuse later Bash calls that contain its words", async ($, on) => {
+  const registered: any[] = [];
+  await start($, on, () => ({ status: "done", output: "" }), registered);
+  expect(Object.keys(registered[0].inputSchema.properties).sort()).toEqual(["code", "reset"]);
 });
 
 test("the Code Mode guide is the tool's description: preferred beside Bash, exclusive without it", async ($, on) => {

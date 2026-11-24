@@ -362,11 +362,12 @@ export const register: Register = (on, options) => {
       name: TOOL,
       description: DESCRIPTION,
       isDeferred: false, // behind ToolSearch the model reaches for Bash before it finds repl
+      // No free-text field beside code (a title, a description): Claude Code reads every string the model
+      // sends in a call, so a multi-word label like "check build" blocks every later Bash call that contains it.
       inputSchema: {
         type: "object",
         properties: {
           code: { type: "string", description: "JavaScript to run as one script" },
-          title: { type: "string", description: "Short label for the script, shown to the user" },
           reset: { type: "boolean", description: "Restart the kernel with empty state before running" },
         },
         required: ["code"],
