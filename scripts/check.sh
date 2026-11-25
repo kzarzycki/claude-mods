@@ -16,5 +16,6 @@ done
 step "code-mode kernel self-check" bun plugins/code-mode/kernel/kernel.check.ts
 step "code-mode interrupt check" bun plugins/code-mode/tests/interrupt.check.ts
 step "code-mode bun lookup check" bun plugins/code-mode/tests/find-bun.check.ts
+step "code-mode session-start check" bun plugins/code-mode/tests/session-start.check.ts
 echo "$failed failed"
 exit $failed

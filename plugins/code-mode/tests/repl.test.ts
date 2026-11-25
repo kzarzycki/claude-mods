@@ -82,6 +82,15 @@ test("the Code Mode guide is the tool's description: preferred beside Bash, excl
   expect((await describe()).description).toContain("Work through `repl`");
 });
 
+test("the guide gives merge rules and one split rule for repl calls", async ($, on) => {
+  on("env.get", () => ({ value: undefined }));
+  on("tool.describe", () => ({ description: "short" }));
+  on("tool.list", () => ({ value: [] }));
+  await start($, on, () => ({ status: "done", output: "" }));
+  const d = (await $.tool.describe({ tool: "mcp__code-mode__repl", description: "short", provider: { plugin: "code-mode", tier: "user" } } as any)).description;
+  for (const t of ["Merge into one script", "Promise.all", "commit, push, open the PR, clone", "poll or wait loop", "the steps of one phase", "Split only where the next step needs a judgment"]) expect(d).toContain(t);
+});
+
 test("with CODE_MODE_GUIDE=system the description points at the system prompt instead of repeating the guide", async ($, on) => {
   on("env.get", ($, e) => ({ value: e.name === "CODE_MODE_GUIDE" ? "system" : undefined }));
   on("tool.describe", () => ({ description: "short" }));
