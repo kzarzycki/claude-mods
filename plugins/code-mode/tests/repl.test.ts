@@ -91,6 +91,17 @@ test("the guide gives merge rules and one split rule for repl calls", async ($, 
   for (const t of ["Merge into one script", "Promise.all", "commit, push, open the PR, clone", "poll or wait loop", "the steps of one phase", "Split only where the next step needs a judgment"]) expect(d).toContain(t);
 });
 
+test("the guide says to keep going in the same script on the happy path and stop at the first failure", async ($, on) => {
+  on("env.get", () => ({ value: undefined }));
+  on("tool.describe", () => ({ description: "short" }));
+  on("tool.list", () => ({ value: [] }));
+  await start($, on, () => ({ status: "done", output: "" }));
+  const d = (await $.tool.describe({ tool: "mcp__code-mode__repl", description: "short", provider: { plugin: "code-mode", tier: "user" } } as any)).description;
+  expect(d).toContain("On the happy path keep going in the same script");
+  expect(d).toContain("if the tests pass, commit, push and open the PR");
+  expect(d).toContain("stop and return on the first failure with what failed");
+});
+
 test("with CODE_MODE_GUIDE=system the description points at the system prompt instead of repeating the guide", async ($, on) => {
   on("env.get", ($, e) => ({ value: e.name === "CODE_MODE_GUIDE" ? "system" : undefined }));
   on("tool.describe", () => ({ description: "short" }));
