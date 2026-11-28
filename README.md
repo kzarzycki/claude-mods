@@ -69,7 +69,7 @@ Options of mods loaded this way are under `<name>@inline` (in `/config`, or `cla
 
 ## Checks
 
-- `scripts/check.sh`: validate, unit-test (`claude plugin test`) and type-check every mod, plus the kernel's self-check. No model calls, under ten seconds.
+- `scripts/check.sh`: validate, unit-test (`claude plugin test`) and type-check each mod whose types a session has already laid (a fresh checkout or CI skips the type check; see Not done or not verified), plus the kernel's self-check. No model calls, under ten seconds.
 - `e2e/run.sh [decision repl ttsr compact hub self-compact]`: real `claude` sessions with the mods loaded, asserting on output and on files the mods write. They make real model calls; the whole run takes about four minutes. `hub` and the question-rule check drive an interactive session through `expect`, because headless `claude -p` differs there (see below).
 
 ## How the pieces work
