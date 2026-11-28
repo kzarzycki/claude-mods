@@ -121,12 +121,15 @@ const TOOL_ALIASES: Record<string, string[]> = {
 /** Split on commas outside `{}`, so `*.{ts,tsx},src/**` is two globs. */
 function splitGlobs(s: string): string[] {
   const out: string[] = [];
-  let depth = 0;
   let cur = "";
-  for (const c of s) {
-    if (c === "{") depth++;
-    else if (c === "}" && depth > 0) depth--;
-    if (c === "," && depth === 0) {
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!;
+    // A `{` opens a group only when a `}` follows, as in globToRegExp; otherwise it is a literal.
+    const end = c === "{" ? s.indexOf("}", i) : -1;
+    if (end !== -1) {
+      cur += s.slice(i, end + 1);
+      i = end;
+    } else if (c === ",") {
       out.push(cur);
       cur = "";
     } else cur += c;

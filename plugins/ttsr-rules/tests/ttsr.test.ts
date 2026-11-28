@@ -34,6 +34,14 @@ test("an unclosed brace in a glob is a literal and the parse returns", () => {
   expect(r.globs.length).toBe(1);
 });
 
+test("a literal brace in a scope does not swallow the glob after it", () => {
+  const r = parseRule("l", "x", `---\ncondition: foo\nscope: tool:edit(src/{draft,docs/**)\n---\nb`)!;
+  const hit = (f: string) => matchToolRule([r], "Edit", { file_path: f, new_string: "foo" }, "/p")?.match;
+  expect(hit("/p/src/{draft")).toBe("foo");
+  expect(hit("/p/docs/a.md")).toBe("foo");
+  expect(hit("/p/other/a.md")).toBeUndefined();
+});
+
 /** Answer the session's file reads from an in-memory rule folder. */
 function ruleFolder(on: On, files: Record<string, string>) {
   const dir = "/repo/.claude/ttsr";
