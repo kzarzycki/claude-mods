@@ -276,6 +276,19 @@ try {
   check("an answer from before a restart is dropped, not given to a new script", oldCall.callId !== newCall.callId && !!stale.dropped && String(fresh.value).includes("fresh"), { oldCall, newCall, stale, fresh });
   check("a restarted kernel says its variables are gone, once", !fresh1.output.includes("[repl]") && !fresh2.output.includes("[repl]") && again.output.includes("started fresh"), { fresh1, again });
 
+  const ex = await run("process.exit(3)");
+  const ab = await run("process.abort()");
+  const alive = await run("add(x, 2)");
+  check("process.exit() and process.abort() throw an error that names reset, and the kernel keeps its variables",
+    ex.status === "error" && ex.error.includes("reset: true") && ab.status === "error" && ab.error.includes("reset: true") && alive.value === "42" && child.exitCode === null, { ex, ab, alive });
+
+  // /reset must still end the process: the script-facing process.exit throws, the kernel's own exit does not.
+  const kr = await kernel(sock + ".3", join(dir, "reset.marker"));
+  await post("/reset", {}, sock + ".3");
+  const exited = await Promise.race([kr.exited.then(() => true), Bun.sleep(3000).then(() => false)]);
+  if (!exited) kr.kill();
+  check("/reset ends the kernel process", exited, { exited });
+
   const vars = await get("/vars");
   check("/vars lists user globals", vars.vars.some((v: any) => v.name === "add") && !vars.vars.some((v: any) => v.name === "file"), vars);
 } finally {

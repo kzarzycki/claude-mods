@@ -167,6 +167,15 @@ Object.assign(console, {
 process.on("unhandledRejection", e => toRing(`unhandled rejection: ${show(e)}`));
 process.on("uncaughtException", e => toRing(`uncaught exception: ${show(e)}`));
 
+// A script that exits the process ends the kernel and every variable in it. The kernel's own exits
+// (/reset, SIGTERM) use realExit; scripts get an error that says what to do instead.
+const realExit = process.exit.bind(process);
+const noExit = (what: string) => () => {
+  throw new Error(`${what} would end the kernel and every variable in it. Throw an error to stop the script; pass reset: true to restart the kernel on purpose.`);
+};
+process.exit = noExit("process.exit()") as typeof process.exit;
+process.abort = noExit("process.abort()") as typeof process.abort;
+
 g.sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 // ---- tools ----
@@ -600,7 +609,7 @@ Bun.serve({
       return json({ vars });
     }
     if (req.method === "POST" && url.pathname === "/reset") {
-      setTimeout(() => process.exit(0), 10);
+      setTimeout(() => realExit(0), 10);
       return json({ ok: true });
     }
     if (req.method === "POST" && url.pathname === "/run") {
@@ -654,7 +663,7 @@ const cleanup = () => {
   try {
     unlinkSync(socket);
   } catch {}
-  process.exit(0);
+  realExit(0);
 };
 process.on("SIGTERM", cleanup);
 process.on("SIGINT", cleanup);
