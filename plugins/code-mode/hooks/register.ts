@@ -237,16 +237,62 @@ async function ready($: EngineInterface, at = sock): Promise<boolean> {
   return false;
 }
 
-/** Keep one kernel alive for the session: a child that exits (reset, crash) is started again. */
+/** Each running kernel by socket: its pid (from its ready line; unset while no child runs) and a way to end its spawn stream. */
+export const kernels = new Map<string, { pid?: number; stop?: () => void }>();
+/** How long a kernel gets to answer /health after an interrupt before the watchdog kills it. */
+export const WATCHDOG_MS = 4000;
+
+/** Keep one kernel alive for the session: a child that exits (reset, crash, watchdog kill) is started again. */
 async function supervise($: EngineInterface, argv: string[], cwd: string) {
+  const at = argv[2]!;
+  const entry: { pid?: number; stop?: () => void } = {};
+  kernels.set(at, entry);
   // ponytail: fixed restart cap, no backoff. Upgrade path: back off on quick consecutive exits.
   for (let starts = 0; starts < 50; starts++) {
     try {
-      for await (const chunk of $.process.spawn({ argv, cwd })) $.ui.log(`code-mode kernel: ${chunk.text.trimEnd()}`, { to: "debug" });
+      const stream = $.process.spawn({ argv, cwd });
+      // Leaving the stream kills the child, and nothing else does.
+      entry.stop = () => void (stream as unknown as AsyncGenerator).return?.(undefined)?.catch?.(() => {});
+      for await (const chunk of stream) {
+        const pid = String(chunk.text).match(/"ready":true.*?"pid":(\d+)/)?.[1];
+        if (pid) entry.pid = Number(pid);
+        $.ui.log(`code-mode kernel: ${chunk.text.trimEnd()}`, { to: "debug" });
+      }
     } catch (err) {
       $.ui.log(`code-mode kernel failed to start: ${String(err)}`, { to: "debug" });
       await $.clock.sleep(1000);
     }
+    entry.pid = undefined; // the child is gone: a later kill must not hit a recycled pid
+  }
+}
+
+const watching = new Set<string>();
+
+/**
+ * After an interrupt: a kernel that doesn't answer /health within WATCHDOG_MS is stuck (a synchronous
+ * loop blocks its one thread, and with it /cancel), so kill it; supervise starts a fresh one and the
+ * restart marker makes the next script say its variables are gone. A kernel that answers, or is
+ * already down, is left alone.
+ */
+export async function watchdog($: EngineInterface, at: string): Promise<void> {
+  if (watching.has(at)) return;
+  watching.add(at);
+  try {
+    const answered = $.http.fetch("http://localhost/health", { socketPath: at }).then(() => false, () => false);
+    const stuck = $.clock.sleep(WATCHDOG_MS).then(() => true);
+    if (!(await Promise.race([answered, stuck]))) return;
+    const k = kernels.get(at);
+    if (!k) return;
+    const pid = k.pid;
+    // ponytail: ending the spawn stream is the documented way to kill the child; if the pid still lives
+    // a second later, kill it by pid with $.process.run. Upgrade path: drop the pid route once the stream route is proven alone.
+    k.stop?.();
+    await $.clock.sleep(1000);
+    if (pid !== undefined && k.pid === pid && (await $.process.run(["kill", "-0", String(pid)])).exitCode === 0) await $.process.run(["kill", "-9", String(pid)]);
+  } catch (err) {
+    $.ui.log(`code-mode watchdog failed: ${String(err)}`, { to: "debug" });
+  } finally {
+    watching.delete(at);
   }
 }
 
@@ -285,7 +331,11 @@ async function runScript($: EngineInterface, code: string, maxCalls: number, sig
   if (!(await ready($, at))) return { status: "error", output: "", error: "the kernel is not running (is bun installed? see /repl)" };
   // An interrupt cancels this script alone: other scripts in the kernel, and its variables, stay.
   const run = { cell: "" };
-  const interrupted = () => void (run.cell && post($, "/cancel", { cell: run.cell, why: "interrupted" }, at).catch(() => {}));
+  // A script stuck in a synchronous loop keeps /cancel from being answered, so the watchdog runs whether or not there is a cell.
+  const interrupted = () => {
+    if (run.cell) void post($, "/cancel", { cell: run.cell, why: "interrupted" }, at).catch(() => {});
+    void watchdog($, at);
+  };
   signal?.addEventListener("abort", interrupted, { once: true });
   try {
     return await drive($, code, maxCalls, run, at, signal);
