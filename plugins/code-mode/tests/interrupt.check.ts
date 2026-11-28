@@ -2,6 +2,7 @@
 // An abort at any point before the script's result is accepted must cancel the cell (once it has one)
 // and report "interrupted", never the script's value. The kit's `claude plugin test` hands a hook no
 // abort signal, so this drives register() directly.
+import * as reg from "../hooks/register";
 import { register } from "../hooks/register";
 
 // Bun runs this; the mod's tsconfig carries only Claude Code's types, so name the two globals used here.
@@ -38,6 +39,8 @@ for (const [name, reply, sent, during = {}] of cases) {
     session: { cwd: async () => (await Promise.resolve(), during.cwd?.(() => controller.abort()), "/repo") },
     tool: { call: async () => (await Promise.resolve(), during.tool?.(() => controller.abort()), { result: "contents" }) },
     agent: { spawn: async () => (await Promise.resolve(), during.spawn?.(() => controller.abort()) ?? { agentId: "a0" }) },
+    clock: { sleep: async () => {} },
+    process: { run: async () => ({ exitCode: 1, stdout: "", stderr: "" }) },
     http: { fetch: async (url: string) => {
       const path = new URL(url).pathname;
       requests.push(path);
@@ -49,5 +52,50 @@ for (const [name, reply, sent, during = {}] of cases) {
   console.log(`${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) (failed++, console.log("     ", JSON.stringify({ requests, result })));
 }
+// Watchdog cases: a kernel stuck in a synchronous loop answers nothing, not even /cancel. An interrupt
+// must get it killed by its pid, and a kernel that answers, must be left alone.
+declare const setTimeout: (f: () => void, ms: number) => unknown;
+const kernels: Map<string, { pid?: number }> = (reg as any).kernels ?? new Map();
+type Kernel = { stuck: boolean };
+async function watchdogCase(name: string, k: Kernel, expect: { killed: boolean }) {
+  const controller = new AbortController();
+  const hung: ((e: Error) => void)[] = [];
+  const log = { kills: [] as string[] };
+  let alive = true, wedged = false;
+  const die = () => (alive = false, hung.splice(0).forEach(reject => reject(new Error("socket closed"))));
+  kernels.clear();
+  kernels.set("", { pid: 4242 });
+  const engine = {
+    session: { cwd: async () => "/repo" },
+    clock: { sleep: () => new Promise<void>(r => setTimeout(r, 5)) },
+    process: { run: async (argv: string[]) => {
+      if (argv[1] === "-9") (log.kills.push(argv.join(" ")), die());
+      // ps names the kernel while it lives (its command line carries the socket path, "" here).
+      return { exitCode: argv[0] === "ps" && !alive ? 1 : 0, stdout: argv[0] === "ps" ? "bun kernel.ts" : "", stderr: "" };
+    } },
+    ui: { log: () => {} },
+    http: { fetch: (url: string) => {
+      const path = new URL(url).pathname;
+      if (path === "/run" && k.stuck) wedged = true;
+      if (wedged && alive) return new Promise<never>((_, reject) => hung.push(reject));
+      if (!alive) return Promise.reject(new Error("socket closed"));
+      // A macrotask, so the wait loop on /next lets timers run.
+      return new Promise(r => setTimeout(() => r({ ok: true, text: JSON.stringify(path === "/health" ? { ok: true } : { status: "wait", cell: "g.k1" }) }), 1));
+    } },
+  };
+  // The script is in flight (waiting on its first answer) when the person interrupts.
+  const running = hooks.get("repl")!(engine, { code: "while (true) {}" }, { signal: controller.signal });
+  await new Promise(r => setTimeout(r, 20));
+  // A stuck kernel never answered /health, so the call's own wait is on the first request that hangs.
+  controller.abort();
+  const result: any = await Promise.race([running, new Promise(r => setTimeout(() => r("hung"), 1500))]);
+  await new Promise(r => setTimeout(r, 100));
+  const ok = result !== "hung" && /interrupted/.test(String(result.result)) && (log.kills.length > 0) === expect.killed;
+  console.log(`${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) (failed++, console.log("     ", JSON.stringify({ result, log })));
+}
+await watchdogCase("interrupt of a script stuck in a synchronous loop: the kernel is killed by its pid and the call returns", { stuck: true }, { killed: true });
+await watchdogCase("interrupt of a script on a kernel that answers: nothing is killed", { stuck: false }, { killed: false });
+
 console.log(failed ? `${failed} failed` : "all passed");
 process.exit(failed ? 1 : 0);

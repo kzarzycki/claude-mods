@@ -636,7 +636,8 @@ Bun.serve({
     }
     if (req.method === "POST" && url.pathname === "/cancel") {
       // ponytail: JavaScript can't be stopped from outside, so a cancelled script runs on until its
-      // next host call, which rejects; a synchronous endless loop still needs /reset.
+      // next host call, which rejects. A synchronous endless loop blocks this server too, so /cancel never
+      // answers; the mod's watchdog (hooks/register.ts) kills a kernel that stays silent after an interrupt.
       const { cell, why } = (await req.json()) as { cell: string; why?: string };
       const c = cells.get(cell);
       if (c) {

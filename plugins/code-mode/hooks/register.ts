@@ -230,15 +230,29 @@ async function ready($: EngineInterface, at = sock): Promise<boolean> {
   for (let i = 0; i < 50; i++) {
     try {
       const res = await $.http.fetch("http://localhost/health", { socketPath: at });
-      if (res.ok) return true;
+      if (res.ok) {
+        // The kernel names its own pid on its own socket: that, not its output, is the identity the watchdog may signal.
+        const pid = (JSON.parse(res.text) as { pid?: unknown }).pid;
+        const k = kernels.get(at);
+        if (k && typeof pid === "number") k.pid = pid;
+        return true;
+      }
     } catch {}
     await $.clock.sleep(100);
   }
   return false;
 }
 
-/** Keep one kernel alive for the session: a child that exits (reset, crash) is started again. */
+/** Each running kernel by socket: its pid (from its own /health; unset while no child runs). */
+export const kernels = new Map<string, { pid?: number }>();
+/** How long a kernel gets to answer /health after an interrupt before the watchdog kills it. */
+export const WATCHDOG_MS = 4000;
+
+/** Keep one kernel alive for the session: a child that exits (reset, crash, watchdog kill) is started again. */
 async function supervise($: EngineInterface, argv: string[], cwd: string) {
+  const at = argv[2]!;
+  const entry: { pid?: number } = {};
+  kernels.set(at, entry);
   // ponytail: fixed restart cap, no backoff. Upgrade path: back off on quick consecutive exits.
   for (let starts = 0; starts < 50; starts++) {
     try {
@@ -247,6 +261,39 @@ async function supervise($: EngineInterface, argv: string[], cwd: string) {
       $.ui.log(`code-mode kernel failed to start: ${String(err)}`, { to: "debug" });
       await $.clock.sleep(1000);
     }
+    entry.pid = undefined; // the child is gone: a later kill must not hit a recycled pid
+  }
+}
+
+const watching = new Set<string>();
+
+/**
+ * After an interrupt: a kernel that doesn't answer /health within WATCHDOG_MS is stuck (a synchronous
+ * loop blocks its one thread, and with it /cancel), so kill it by pid; supervise starts a fresh one and the
+ * restart marker makes the next script say its variables are gone. A kernel that answers, or is
+ * already down, is left alone.
+ */
+export async function watchdog($: EngineInterface, at: string): Promise<void> {
+  if (watching.has(at)) return;
+  watching.add(at);
+  try {
+    const answered = $.http.fetch("http://localhost/health", { socketPath: at }).then(() => false, () => false);
+    const stuck = $.clock.sleep(WATCHDOG_MS).then(() => true);
+    if (!(await Promise.race([answered, stuck]))) return;
+    const k = kernels.get(at);
+    if (!k) return;
+    const pid = k.pid;
+    // ponytail: kills by pid with $.process.run. Ending the spawn stream is not used: it asks the kernel to exit,
+    // and a thread stuck in a loop never runs that (a live session showed it). Upgrade path: a spawn-stream kill that is SIGKILL.
+    // Only the process that is still this kernel: its pid is the one the kernel reported on this socket,
+    // it must still be the same child, and its command line must still carry this socket's path.
+    if (pid === undefined || k.pid !== pid) return;
+    const who = await $.process.run(["ps", "-o", "args=", "-p", String(pid)]);
+    if (who.exitCode === 0 && who.stdout.includes(at) && k.pid === pid) await $.process.run(["kill", "-9", String(pid)]);
+  } catch (err) {
+    $.ui.log(`code-mode watchdog failed: ${String(err)}`, { to: "debug" });
+  } finally {
+    watching.delete(at);
   }
 }
 
@@ -282,12 +329,17 @@ async function hostCall($: EngineInterface, kind: string, p: any): Promise<unkno
 /** Run a script to its end in the kernel at `at`, answering its host calls. */
 async function runScript($: EngineInterface, code: string, maxCalls: number, signal?: AbortSignal, at = sock): Promise<Event> {
   if (session.bunMissing) return { status: "error", output: "", error: BUN_MISSING };
-  if (!(await ready($, at))) return { status: "error", output: "", error: "the kernel is not running (is bun installed? see /repl)" };
   // An interrupt cancels this script alone: other scripts in the kernel, and its variables, stay.
   const run = { cell: "" };
-  const interrupted = () => void (run.cell && post($, "/cancel", { cell: run.cell, why: "interrupted" }, at).catch(() => {}));
+  // A script stuck in a synchronous loop keeps /cancel from being answered, so the watchdog runs whether or not there is a cell.
+  // It is armed before the wait for the kernel, since a call queued behind a wedged kernel waits there.
+  const interrupted = () => {
+    if (run.cell) void post($, "/cancel", { cell: run.cell, why: "interrupted" }, at).catch(() => {});
+    void watchdog($, at);
+  };
   signal?.addEventListener("abort", interrupted, { once: true });
   try {
+    if (!(await ready($, at))) return { status: "error", output: "", error: signal?.aborted ? "interrupted" : "the kernel is not running (is bun installed? see /repl)" };
     return await drive($, code, maxCalls, run, at, signal);
   } catch (err) {
     if (signal?.aborted) return { status: "error", output: "", error: "interrupted" };
@@ -456,7 +508,10 @@ export const register: Register = (on, options) => {
 
   on("command.run", { command: "repl" }, async ($, e, next) => {
     const arg = e.args.trim();
-    if (!(await ready($))) return { text: `kernel not running at ${sock} (runtime: ${bun})`, exitCode: 1 };
+    const stuck = () => void watchdog($, sock);
+    next.signal?.addEventListener("abort", stuck, { once: true });
+    const up = await ready($).finally(() => next.signal?.removeEventListener("abort", stuck));
+    if (!up) return { text: `kernel not running at ${sock} (runtime: ${bun})`, exitCode: 1 };
     if (arg === "" || arg === "vars") {
       const res = await $.http.fetch("http://localhost/vars", { socketPath: sock });
       const vars = (JSON.parse(res.text).vars as { name: string; type: string }[]).map(v => `${v.name}: ${v.type}`);
