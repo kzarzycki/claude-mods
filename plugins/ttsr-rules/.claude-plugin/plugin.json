@@ -1,6 +1,6 @@
 {
   "name": "ttsr-rules",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "oh-my-pi TTSR rules: a regex rule denies the tool call that would break it, with the rule as the reason; a question rule is judged after each turn.",
   "dependencies": ["decision-model"],
   "userConfig": {

@@ -17,6 +17,44 @@ test("rule files parse the way oh-my-pi writes them", () => {
   expect(parseRule("s", "x", `---\ncondition: foo\nscope: text\n---\nb`)).toBeUndefined();
 });
 
+test("a scope glob with braces keeps its commas and matches either extension", () => {
+  const r = parseRule("b", "x", `---\ncondition: foo\nscope: tool:edit(*.{ts,tsx})\n---\nb`)!;
+  const hit = (f: string) => matchToolRule([r], "Edit", { file_path: f, new_string: "foo" }, "/p")?.match;
+  expect(hit("/p/a.ts")).toBe("foo");
+  expect(hit("/p/a.tsx")).toBe("foo");
+  expect(hit("/p/a.js")).toBeUndefined();
+  const two = parseRule("c", "x", `---\ncondition: foo\nscope: tool:edit(*.{ts,tsx},src/**)\n---\nb`)!;
+  expect(matchToolRule([two], "Edit", { file_path: "/p/src/a.md", new_string: "foo" }, "/p")?.match).toBe("foo");
+});
+
+test("an unclosed brace in a glob is a literal and the parse returns", () => {
+  expect(globToRegExp("a{b").test("a{b")).toBe(true);
+  expect(globToRegExp("a{b").test("ab")).toBe(false);
+  const r = parseRule("u", "x", `---\ncondition: foo\nglobs:\n  - "src/{a"\n---\nb`)!;
+  expect(r.globs.length).toBe(1);
+});
+
+test("a literal brace in a scope does not swallow the glob after it", () => {
+  const r = parseRule("l", "x", `---\ncondition: foo\nscope: tool:edit(src/{draft,docs/**)\n---\nb`)!;
+  const hit = (f: string) => matchToolRule([r], "Edit", { file_path: f, new_string: "foo" }, "/p")?.match;
+  expect(hit("/p/src/{draft")).toBe("foo");
+  expect(hit("/p/docs/a.md")).toBe("foo");
+  expect(hit("/p/other/a.md")).toBeUndefined();
+});
+
+test("the scope splitter and the glob converter agree on brackets, stray and nested braces", () => {
+  const files = (scope: string, paths: string[]) => {
+    const r = parseRule("s", "x", `---\ncondition: foo\nscope: ${scope}\n---\nb`)!;
+    return paths.map(f => matchToolRule([r], "Edit", { file_path: f, new_string: "foo" }, "/p")?.match);
+  };
+  // `[` is literal in the converter, so the comma after it still splits.
+  expect(files("tool:edit(a[x,docs/**)", ["/p/a[x", "/p/docs/a.md"])).toEqual(["foo", "foo"]);
+  // A stray `}` is literal and doesn't hide the comma.
+  expect(files("tool:edit(a},docs/**)", ["/p/a}", "/p/docs/a.md"])).toEqual(["foo", "foo"]);
+  // A nested group closes at the first `}` in both (nesting is unsupported); the later glob still splits off.
+  expect(files("tool:edit({a,{b,c}},docs/**)", ["/p/a}", "/p/docs/x.md"])).toEqual(["foo", "foo"]);
+});
+
 /** Answer the session's file reads from an in-memory rule folder. */
 function ruleFolder(on: On, files: Record<string, string>) {
   const dir = "/repo/.claude/ttsr";
