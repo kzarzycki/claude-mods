@@ -252,7 +252,15 @@ async function stopKernel($: EngineInterface, at: string): Promise<void> {
   }
   stopWhenIdle.delete(at);
   stopped.add(at);
-  await post($, "/stop", {}, at).catch(() => {});
+  // A kernel that is still starting doesn't answer yet; ask again until it does, so it can't come up after the stop.
+  for (let tries = 0; tries < 50; tries++) {
+    try {
+      await post($, "/stop", {}, at);
+      return;
+    } catch {
+      await $.clock.sleep(100);
+    }
+  }
 }
 
 /** Keep one kernel alive until it is stopped on purpose: a child that exits (reset, crash) is started again. */
