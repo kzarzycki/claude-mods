@@ -259,7 +259,9 @@ async function runShell(cmd: string, o: { throws: boolean; timeout?: number; cwd
     // Claude Code saves a large Bash output to a file and may leave stdout empty: read the saved
     // file's first page, and say the output was cut. An empty stdout falls back to the result text.
     const saved = r?.result?.persistedOutputPath;
+    // Bash's own status for a silent success is not output.
     let text = String(r?.result?.stdout || r?.text || "");
+    if (text === "(Bash completed with no output)") text = "";
     let note: string | undefined;
     let whole = true;
     if (typeof saved === "string" && saved) {

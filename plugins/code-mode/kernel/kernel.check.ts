@@ -32,6 +32,8 @@ function fakeTool(tool: string, a: any): unknown {
       writeFileSync(p, "line\n".repeat(3000));
       return { text: "<persisted-output>saved</persisted-output>", result: { stdout: "", stderr: "", persistedOutputPath: p }, isError: false };
     }
+    if (a.command.includes("QUIETOK")) return { text: "(Bash completed with no output)", result: { stdout: "", stderr: "" }, isError: false };
+    if (a.command.includes("UNREADABLE")) return { text: "preview of it", result: { stdout: "", stderr: "", persistedOutputPath: join(tmpdir(), "kernel-check-missing.txt") }, isError: false };
     if (a.command.includes("EMPTYSTDOUT")) return { text: "from text", result: { stdout: "", stderr: "" }, isError: false };
     return r.exitCode === 0
       ? { text: out, result: { stdout: out, stderr: "" }, isError: false }
@@ -112,8 +114,17 @@ try {
   const s1 = await run("const name = \"it's here\"\nawait $`echo ${name} ${['a b', 'c']}`.text()");
   check("$ quotes each value as one argument, arrays one per item", s1.value === "it's here a b c\n" && s1.calls[0] === "tool:Bash", s1);
 
-  const bigShell = await run("const r = await $`echo BIGOUT`\n[r.stdout.split('\\n').length, r.truncated, r.whole, r.note]");
-  check("a large $ output saved to a file is read back, cut to a page and marked truncated", bigShell.status === "done" && bigShell.value.includes("1000,") && bigShell.value.includes("true") && bigShell.value.includes("kernel-check-big.txt"), bigShell);
+  const bigShell = await run("const r = await $`echo BIGOUT`\nJSON.stringify({ n: r.stdout.split('\\n').length, t: r.truncated, w: r.whole, note: r.note })");
+  const bs = bigShell.status === "done" ? JSON.parse(bigShell.value) : {};
+  check("a large $ output saved to a file is read back, one page of it", bs.n === 1000, bigShell);
+  check("a large saved $ output is marked truncated and not whole, the note names the file", bs.t === true && bs.w === false && String(bs.note).includes("kernel-check-big.txt"), bigShell);
+
+  const unread = await run("const r = await $`echo UNREADABLE`\nJSON.stringify({ out: r.stdout, t: r.truncated, w: r.whole, note: r.note })");
+  const ur = unread.status === "done" ? JSON.parse(unread.value) : {};
+  check("a saved $ output that can't be read back keeps the preview, truncated, not whole, with a note", ur.out === "preview of it" && ur.t === true && ur.w === false && String(ur.note).includes("could not be read back"), unread);
+
+  const quiet = await run("JSON.stringify(await $`echo QUIETOK`.text())");
+  check("a silent success stays an empty stdout, not Bash's status message", quiet.value === '""', quiet);
 
   const em = await run("await $`echo EMPTYSTDOUT`.text()");
   check("an empty stdout falls back to the result text", em.value === "from text", em);

@@ -1,6 +1,6 @@
 {
   "name": "code-mode",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Claude Code's Code Mode as a mod: one `repl` tool runs JavaScript in a persistent kernel with $, file, edit, write, tools and agent(). Preferred beside the other tools, or the one way to work when the session denies them.",
   "userConfig": {
     "bun": { "type": "string", "title": "Bun executable", "description": "Command that runs the kernel", "default": "bun" },
