@@ -114,7 +114,7 @@ Each item was observed in a run, not read from docs.
   - Scripts don't detach: a `repl` call waits for its script to end, so there is no Poll tool and no background lane. Scripts started side by side (by subagents, or parallel `repl` calls) do run at once.
   - Subagents share the parent's variables by default; in Claude Code's Code Mode each agent has a context of its own (our `subagents: own`).
   - No tool schemas: `searchTools` and `describeTool` give names and descriptions only, because Claude Code hands mods no input schemas.
-  - `$` output is what the Bash tool returns; there is no spill-file reading of large outputs.
+  - `$` output is what the Bash tool returns. When Claude Code saves a large output to a file, `$` reads that file's first page through Read (halving the page if Read refuses it) and sets `truncated`, with `whole: false` and a note naming the file; if Read can't return it, the preview Claude Code gave is kept. The rest is read with `file(path).slice(offset, limit)`.
   - Timers a script sets aren't cleared when it ends.
   - The context isn't sealed: `import`, Bun and `node:*` work, and that work goes around Claude Code's permissions. The prompt tells the model to use the globals.
   - Permissions: every `repl` call is one permission decision. The tool calls a script makes go through `$.tool.call`: hooks (PreToolUse, other mods' `tool.call` hooks) run on each, but deny rules don't, because they bind only the model's own calls. Exclusive mode depends on that. `file().exists()` is a `test -e` call of the Bash tool, so it passes through the same hooks.

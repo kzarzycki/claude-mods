@@ -255,7 +255,32 @@ async function runShell(cmd: string, o: { throws: boolean; timeout?: number; cwd
   const command = `(${env}${dir}${cmd}\n)`;
   const r = await host("tool", { tool: "Bash", args: { command, description: cmd.split("\n")[0]!.slice(0, 80), ...(o.timeout ? { timeout: o.timeout } : {}) } });
   let out: ShellOutput;
-  if (!r?.isError) out = new ShellOutput(String(r?.result?.stdout ?? r?.text ?? ""), 0);
+  if (!r?.isError) {
+    // Claude Code saves a large Bash output to a file and may leave stdout empty: read the saved
+    // file's first page, and say the output was cut. An empty stdout falls back to the result text.
+    const saved = r?.result?.persistedOutputPath;
+    // Bash's own status for a silent success is not output.
+    let text = String(r?.result?.stdout || r?.text || "");
+    if (text === "(Bash completed with no output)") text = "";
+    let note: string | undefined;
+    let whole = true;
+    if (typeof saved === "string" && saved) {
+      whole = false;
+      note = `output was too large and Claude Code saved it to ${saved}`;
+      try {
+        let f, limit = READ_PAGE;
+        for (;;) { // a page Read refuses as too large is asked for again with half the lines
+          try { f = await readLines(saved, 1, limit); break; } catch (err) { if (limit === 1 || !/exceeds|too large|maximum/i.test(String(err))) throw err; limit = Math.ceil(limit / 2); }
+        }
+        text = f.content;
+        whole = f.numLines >= f.totalLines;
+        note += whole ? "; it was read whole" : `; this is its first ${f.numLines} of ${f.totalLines} lines (read the rest with file(path).slice(offset, limit))`;
+      } catch { note += "; it could not be read back, so this is only the preview Claude Code gave"; }
+    }
+    out = new ShellOutput(text, 0, undefined, note);
+    out.truncated = !!note;
+    out.whole = whole;
+  }
   else {
     const m = /^Exit code (\d+)\n?([\s\S]*)$/.exec(String(r.text ?? ""));
     out = m ? new ShellOutput(m[2]!, Number(m[1])) : new ShellOutput("", null, String(r.text ?? "Bash failed"));
