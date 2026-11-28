@@ -282,6 +282,13 @@ try {
   check("process.exit() and process.abort() throw an error that names reset, and the kernel keeps its variables",
     ex.status === "error" && ex.error.includes("reset: true") && ab.status === "error" && ab.error.includes("reset: true") && alive.value === "42" && child.exitCode === null, { ex, ab, alive });
 
+  // /reset must still end the process: the script-facing process.exit throws, the kernel's own exit does not.
+  const kr = await kernel(sock + ".3", join(dir, "reset.marker"));
+  await post("/reset", {}, sock + ".3");
+  const exited = await Promise.race([kr.exited.then(() => true), Bun.sleep(3000).then(() => false)]);
+  if (!exited) kr.kill();
+  check("/reset ends the kernel process", exited, { exited });
+
   const vars = await get("/vars");
   check("/vars lists user globals", vars.vars.some((v: any) => v.name === "add") && !vars.vars.some((v: any) => v.name === "file"), vars);
 } finally {
