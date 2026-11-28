@@ -42,6 +42,19 @@ test("a literal brace in a scope does not swallow the glob after it", () => {
   expect(hit("/p/other/a.md")).toBeUndefined();
 });
 
+test("the scope splitter and the glob converter agree on brackets, stray and nested braces", () => {
+  const files = (scope: string, paths: string[]) => {
+    const r = parseRule("s", "x", `---\ncondition: foo\nscope: ${scope}\n---\nb`)!;
+    return paths.map(f => matchToolRule([r], "Edit", { file_path: f, new_string: "foo" }, "/p")?.match);
+  };
+  // `[` is literal in the converter, so the comma after it still splits.
+  expect(files("tool:edit(a[x,docs/**)", ["/p/a[x", "/p/docs/a.md"])).toEqual(["foo", "foo"]);
+  // A stray `}` is literal and doesn't hide the comma.
+  expect(files("tool:edit(a},docs/**)", ["/p/a}", "/p/docs/a.md"])).toEqual(["foo", "foo"]);
+  // A nested group closes at the first `}` in both (nesting is unsupported); the later glob still splits off.
+  expect(files("tool:edit({a,{b,c}},docs/**)", ["/p/a}", "/p/docs/x.md"])).toEqual(["foo", "foo"]);
+});
+
 /** Answer the session's file reads from an in-memory rule folder. */
 function ruleFolder(on: On, files: Record<string, string>) {
   const dir = "/repo/.claude/ttsr";
