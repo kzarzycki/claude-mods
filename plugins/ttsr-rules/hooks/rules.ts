@@ -98,8 +98,11 @@ export function globToRegExp(glob: string): RegExp {
     else if (c === "?") re += "[^/]";
     else if (c === "{") {
       const end = glob.indexOf("}", i);
-      re += `(?:${glob.slice(i + 1, end).split(",").map(escape).join("|")})`;
-      i = end;
+      if (end === -1) re += "\\{"; // no closing brace: a literal `{`
+      else {
+        re += `(?:${glob.slice(i + 1, end).split(",").map(escape).join("|")})`;
+        i = end;
+      }
     } else re += escape(c);
   }
   // A glob without a slash matches the file name anywhere, like .gitignore.
@@ -115,6 +118,23 @@ const TOOL_ALIASES: Record<string, string[]> = {
   read: ["Read"],
 };
 
+/** Split on commas outside `{}`, so `*.{ts,tsx},src/**` is two globs. */
+function splitGlobs(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const c of s) {
+    if (c === "{") depth++;
+    else if (c === "}" && depth > 0) depth--;
+    if (c === "," && depth === 0) {
+      out.push(cur);
+      cur = "";
+    } else cur += c;
+  }
+  out.push(cur);
+  return out.map(g => g.trim());
+}
+
 /** `tool`, `tool:edit`, `tool:edit(*.ts)`, `tool:edit,write(src/**)`; `text`/`thinking` aren't checkable here. */
 function parseScope(scope: unknown): { tools: string[]; globs: string[]; streamOnly: boolean } {
   const parts = (Array.isArray(scope) ? scope : scope ? [scope] : []).map(String);
@@ -127,7 +147,7 @@ function parseScope(scope: unknown): { tools: string[]; globs: string[]; streamO
     if (!m) continue;
     toolScoped = true;
     for (const t of (m[1] ?? "").split(",").map(s => s.trim()).filter(Boolean)) tools.push(...(TOOL_ALIASES[t.toLowerCase()] ?? [t]));
-    if (m[2]) globs.push(...m[2].split(",").map(s => s.trim()));
+    if (m[2]) globs.push(...splitGlobs(m[2]));
   }
   return { tools, globs, streamOnly: !toolScoped };
 }

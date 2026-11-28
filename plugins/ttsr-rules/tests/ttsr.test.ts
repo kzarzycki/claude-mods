@@ -17,6 +17,23 @@ test("rule files parse the way oh-my-pi writes them", () => {
   expect(parseRule("s", "x", `---\ncondition: foo\nscope: text\n---\nb`)).toBeUndefined();
 });
 
+test("a scope glob with braces keeps its commas and matches either extension", () => {
+  const r = parseRule("b", "x", `---\ncondition: foo\nscope: tool:edit(*.{ts,tsx})\n---\nb`)!;
+  const hit = (f: string) => matchToolRule([r], "Edit", { file_path: f, new_string: "foo" }, "/p")?.match;
+  expect(hit("/p/a.ts")).toBe("foo");
+  expect(hit("/p/a.tsx")).toBe("foo");
+  expect(hit("/p/a.js")).toBeUndefined();
+  const two = parseRule("c", "x", `---\ncondition: foo\nscope: tool:edit(*.{ts,tsx},src/**)\n---\nb`)!;
+  expect(matchToolRule([two], "Edit", { file_path: "/p/src/a.md", new_string: "foo" }, "/p")?.match).toBe("foo");
+});
+
+test("an unclosed brace in a glob is a literal and the parse returns", () => {
+  expect(globToRegExp("a{b").test("a{b")).toBe(true);
+  expect(globToRegExp("a{b").test("ab")).toBe(false);
+  const r = parseRule("u", "x", `---\ncondition: foo\nglobs:\n  - "src/{a"\n---\nb`)!;
+  expect(r.globs.length).toBe(1);
+});
+
 /** Answer the session's file reads from an in-memory rule folder. */
 function ruleFolder(on: On, files: Record<string, string>) {
   const dir = "/repo/.claude/ttsr";
