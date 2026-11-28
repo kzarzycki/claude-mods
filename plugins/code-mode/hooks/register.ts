@@ -148,8 +148,14 @@ type Event = (
 /** The main session's kernel socket; set once the session starts. */
 let sock = "";
 /** With the "own" subagents option: each subagent's kernel socket, started at its first repl call. */
-// ponytail: a subagent's kernel lives as long as the session (it may be resumed). Upgrade path: stop it after the agent's last turn.
+// A subagent's kernel stops when its agent's turn completes; a resumed agent starts a fresh one (the [repl] notice says so).
 const agentKernels = new Map<string, string>();
+/** Kernels stopped on purpose, by socket: supervise doesn't start those again. */
+const stopped = new Set<string>();
+/** Scripts running in each kernel, by socket. A kernel with one isn't stopped until it ends. */
+const running = new Map<string, number>();
+/** Kernels whose stop waits for their last running script. */
+const stopWhenIdle = new Set<string>();
 /** Session id and options, kept from session.start for kernels started later. */
 let session = { id: "", bun: "bun", cwd: "", bunMissing: false };
 /** Subagents a running script waits on: agentId → the kernel's callId, the schema its answer must match and the kernel it waits in. */
@@ -200,7 +206,7 @@ function startKernel($: EngineInterface, key: string): string {
   const at = `/tmp/code-mode-${session.id.slice(0, 8)}-${Math.random().toString(36).slice(2, 8)}.sock`;
   // The marker outlives a mod reload, so a kernel that replaces an earlier one can say variables are gone.
   const marker = `/tmp/code-mode-${session.id}-${key}.ran`;
-  void supervise($, [session.bun, `${$.plugin.root}/kernel/kernel.ts`, at, "20000", marker], session.cwd);
+  void supervise($, [session.bun, `${$.plugin.root}/kernel/kernel.ts`, at, "20000", marker], session.cwd, at);
   return at;
 }
 
@@ -237,10 +243,22 @@ async function ready($: EngineInterface, at = sock): Promise<boolean> {
   return false;
 }
 
-/** Keep one kernel alive for the session: a child that exits (reset, crash) is started again. */
-async function supervise($: EngineInterface, argv: string[], cwd: string) {
+/** Stop the kernel at `at` for good: supervise doesn't restart it, and the kernel unlinks its socket. Waits for a running script first. */
+async function stopKernel($: EngineInterface, at: string): Promise<void> {
+  if (!at) return;
+  if (running.get(at)) {
+    stopWhenIdle.add(at);
+    return;
+  }
+  stopWhenIdle.delete(at);
+  stopped.add(at);
+  await post($, "/stop", {}, at).catch(() => {});
+}
+
+/** Keep one kernel alive until it is stopped on purpose: a child that exits (reset, crash) is started again. */
+async function supervise($: EngineInterface, argv: string[], cwd: string, at: string) {
   // ponytail: fixed restart cap, no backoff. Upgrade path: back off on quick consecutive exits.
-  for (let starts = 0; starts < 50; starts++) {
+  for (let starts = 0; starts < 50 && !stopped.has(at); starts++) {
     try {
       for await (const chunk of $.process.spawn({ argv, cwd })) $.ui.log(`code-mode kernel: ${chunk.text.trimEnd()}`, { to: "debug" });
     } catch (err) {
@@ -285,6 +303,7 @@ async function runScript($: EngineInterface, code: string, maxCalls: number, sig
   if (!(await ready($, at))) return { status: "error", output: "", error: "the kernel is not running (is bun installed? see /repl)" };
   // An interrupt cancels this script alone: other scripts in the kernel, and its variables, stay.
   const run = { cell: "" };
+  running.set(at, (running.get(at) ?? 0) + 1);
   const interrupted = () => void (run.cell && post($, "/cancel", { cell: run.cell, why: "interrupted" }, at).catch(() => {}));
   signal?.addEventListener("abort", interrupted, { once: true });
   try {
@@ -295,6 +314,12 @@ async function runScript($: EngineInterface, code: string, maxCalls: number, sig
     throw err;
   } finally {
     signal?.removeEventListener("abort", interrupted);
+    const left = (running.get(at) ?? 1) - 1;
+    if (left > 0) running.set(at, left);
+    else {
+      running.delete(at);
+      if (stopWhenIdle.has(at)) await stopKernel($, at);
+    }
   }
 }
 
@@ -445,12 +470,26 @@ export const register: Register = (on, options) => {
 
   // A subagent that ended without handing back: its final text (if any) answers the call.
   on("turn.complete", async ($, e, next) => {
+    // With "own" subagents, the agent's kernel goes with its turn. The shared kernel has other users: it stops at session end.
+    const own = subagents === "own" && e.agentId ? agentKernels.get(e.agentId) : undefined;
+    if (e.agentId && own) {
+      agentKernels.delete(e.agentId);
+      await stopKernel($, own);
+    }
     const call = e.agentId ? agentCalls.get(e.agentId) : undefined;
     if (e.agentId && call) {
       agentCalls.delete(e.agentId);
       const answer = e.reason === "answer" ? agentAnswer(e.answer, call.schema) : { ok: false, error: `subagent ended: ${e.reason}` };
       await post($, "/answer", { callId: call.callId, ...answer }, call.at).catch(() => {});
     }
+    return next(e);
+  });
+
+  // The last user of the session's kernel is the main session, so its end stops every kernel left.
+  on("session.end", async ($, e, next) => {
+    const left = [sock, ...agentKernels.values()];
+    agentKernels.clear();
+    for (const at of left) await stopKernel($, at);
     return next(e);
   });
 

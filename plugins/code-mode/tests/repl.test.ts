@@ -133,3 +133,64 @@ test("with no bun found, repl fails with one line naming the install command, an
   expect(String(r.result).trim().split("\n").length).toBe(1);
   expect(posts).toEqual([]);
 });
+
+// A kernel's stop is a POST /stop to its socket; the fake records which socket each call went to.
+async function startWithSockets($: any, on: On) {
+  const calls: { path: string; at: string }[] = [];
+  const spawns: string[] = []; // the socket of each kernel started
+  const ends = new Map<string, () => void>();
+  on("session.id", () => ({ value: "session-one" }));
+  on("tool.register", ($, e) => ({ value: { tool: `mcp__code-mode__${e.name}` } }));
+  on("command.register", ($, e) => ({ value: { command: e.name } }));
+  on("turn.complete", () => ({ text: "" }) as never);
+  on("session.end", () => ({ sessionId: "session-one" }) as never);
+  // A kernel runs until it is stopped; anything else that exits would be started again by supervise.
+  on("process.spawn", async function* (_$, e) {
+    if (e.argv.some((a: string) => a.endsWith("find-bun.sh"))) yield { stream: "stdout", text: "/usr/bin/bun\n" } as never;
+    else {
+      const at = e.argv[e.argv.findIndex((a: string) => a.endsWith("kernel.ts")) + 1]!;
+      spawns.push(at);
+      await new Promise<void>(r => ends.set(at, r));
+    }
+    return { value: { code: 0, signal: null } };
+  });
+  on("clock.sleep", () => ({ value: undefined }));
+  on("session.cwd", () => ({ value: "/repo" }));
+  on("http.fetch", ($, e) => {
+    const path = new URL(e.url).pathname;
+    const at = String((e.init as any)?.socketPath);
+    calls.push({ path, at });
+    if (path === "/stop") ends.get(at)?.();
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(path === "/health" ? { ok: true } : { status: "done", output: "", value: "1" }) } };
+  });
+  on("session.start", ($, e) => ({ cwd: e.cwd }));
+  await $.session.start({ cwd: "/repo", surface: null, isInteractive: false });
+  const stops = () => calls.filter(c => c.path === "/stop").map(c => c.at);
+  return { calls, stops, spawns };
+}
+
+const repl = (code: string, agentId?: string) => ({ tool: "mcp__code-mode__repl", code, ...(agentId ? { agentId } : {}) }) as any;
+
+test("with own subagents, a subagent's kernel stops when its agent ends and supervise doesn't start it again", { options: { subagents: "own" } }, async ($, on) => {
+  const k = await startWithSockets($, on);
+  await $.tool.call(repl("1", "agent-a"));
+  expect(k.spawns.length).toBe(2); // main, agent-a
+  await $.turn.complete({ agentId: "agent-a", reason: "answer", answer: "done" } as any);
+  expect(k.stops().length).toBe(1);
+  expect(k.stops()[0]).toMatch(/^\/tmp\/code-mode-session-/);
+  // The main kernel is not the one stopped, and the stopped one isn't started again.
+  await $.tool.call(repl("1"));
+  expect(k.stops().length).toBe(1);
+  expect(k.spawns.length).toBe(2);
+  expect(new Set(k.spawns).size).toBe(2);
+});
+
+test("the shared kernel keeps running when a subagent that used it ends, and stops when the main session ends", async ($, on) => {
+  const k = await startWithSockets($, on);
+  await $.tool.call(repl("1", "agent-a"));
+  await $.turn.complete({ agentId: "agent-a", reason: "answer", answer: "done" } as any);
+  expect(k.stops()).toEqual([]);
+  expect((await $.tool.call(repl("2"))).isError).toBeUndefined();
+  await $.session.end({} as any);
+  expect(k.stops().length).toBe(1);
+});

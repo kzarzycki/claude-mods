@@ -11,6 +11,7 @@
 //   POST /next    { cell }                        -> Event   (that script's next event)
 //   POST /cancel  { cell }                        -> { ok }  (stop a script: its host calls reject from now on)
 //   POST /reset                                   -> exits; the mod starts a fresh kernel
+//   POST /stop                                    -> unlinks the socket and exits; the mod doesn't start another
 //   GET  /health, GET /vars
 //
 // Several scripts may run at once, in one shared global scope: a subagent's script sees the
@@ -598,6 +599,11 @@ Bun.serve({
     if (req.method === "GET" && url.pathname === "/vars") {
       const vars = Object.keys(g).filter(k => !builtins.has(k) && !k.startsWith("__")).map(k => ({ name: k, type: typeof g[k] }));
       return json({ vars });
+    }
+    // Unlike /reset, the mod doesn't start a kernel again after this: it unlinks the socket and exits.
+    if (req.method === "POST" && url.pathname === "/stop") {
+      setTimeout(() => cleanup(), 10);
+      return json({ ok: true });
     }
     if (req.method === "POST" && url.pathname === "/reset") {
       setTimeout(() => process.exit(0), 10);
