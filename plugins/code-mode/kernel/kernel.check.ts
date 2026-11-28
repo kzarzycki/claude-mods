@@ -1,7 +1,7 @@
 // Self-check for the kernel, outside Claude Code: `bun plugins/code-mode/kernel/kernel.check.ts`.
 // Plays the mod's part: runs scripts over the socket and answers host calls with a fake host whose
 // Bash, Read, Edit and Write answer in the shapes Claude Code's tools give $.tool.call.
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -275,6 +275,14 @@ try {
   k2.kill();
   check("an answer from before a restart is dropped, not given to a new script", oldCall.callId !== newCall.callId && !!stale.dropped && String(fresh.value).includes("fresh"), { oldCall, newCall, stale, fresh });
   check("a restarted kernel says its variables are gone, once", !fresh1.output.includes("[repl]") && !fresh2.output.includes("[repl]") && again.output.includes("started fresh"), { fresh1, again });
+
+  // /stop ends a kernel for good: the process exits and its socket is gone.
+  const sock3 = join(tmpdir(), `code-mode-check-${process.pid}-stop.sock`);
+  const k3 = await kernel(sock3, join(dir, "stop.ran"));
+  const stop = await post("/stop", {}, sock3);
+  const code3 = await Promise.race([k3.exited, Bun.sleep(3000).then(() => "still running")]);
+  check("/stop exits the kernel and unlinks its socket", stop.ok === true && code3 === 0 && !existsSync(sock3), { stop, code3 });
+  k3.kill();
 
   const vars = await get("/vars");
   check("/vars lists user globals", vars.vars.some((v: any) => v.name === "add") && !vars.vars.some((v: any) => v.name === "file"), vars);
