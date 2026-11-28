@@ -556,8 +556,8 @@ function start(code: string, cwd: string): Cell {
   ranHere = true;
   // ponytail: the process cwd is shared, so a script's own fs calls with relative paths follow the
   // latest /run's cwd; the globals (file, $, edit, write) use the script's own. The guide tells the
-  // model to pass absolute paths to raw Bun/Node calls. Upgrade path: warn on overlap, or one kernel
-  // per cwd (the "own" subagents option).
+  // model to pass absolute paths to raw Bun/Node calls. Upgrade path: warn on overlap, or route
+  // scripts to one kernel per cwd (not built; "own" subagents isolates per subagent, not per folder).
   process.chdir(cwd);
   // Scripts are not modules, so require() is given them, resolving from the working directory.
   g.require = createRequire(join(cwd, "noop.js"));
