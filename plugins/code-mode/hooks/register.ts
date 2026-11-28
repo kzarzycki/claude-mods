@@ -250,13 +250,17 @@ async function supervise($: EngineInterface, argv: string[], cwd: string) {
   }
 }
 
+/** Claude Code's refusal of a settings-file access names the mod API's $.settings.read, which a script's $ (the shell helper) doesn't have; point at file(path).text() instead, which goes through Read. */
+const SETTINGS_HINT = "read settings with $.settings.read";
+const scriptHint = (text: string) => text.split(SETTINGS_HINT).join("read a settings file with file(path).text()");
+
 /** Run one host call a script made. Throws to make the script's await reject. */
 async function hostCall($: EngineInterface, kind: string, p: any): Promise<unknown> {
   if (kind === "tool") {
     if (p.tool === TOOL_ID) throw new Error("a script can't call repl itself");
     const r = await $.tool.call({ tool: String(p.tool), ...(p.args ?? {}) });
-    if (r.deny !== undefined) return { isError: true, text: `denied: ${r.deny}` };
-    return { text: r.text ?? (typeof r.result === "string" ? r.result : JSON.stringify(r.result)), result: r.result, isError: r.isError === true };
+    if (r.deny !== undefined) return { isError: true, text: scriptHint(`denied: ${r.deny}`) };
+    return { text: scriptHint(r.text ?? (typeof r.result === "string" ? r.result : JSON.stringify(r.result))), result: r.result, isError: r.isError === true };
   }
   if (kind === "tools") return await $.tool.list();
   if (kind === "complete") {
