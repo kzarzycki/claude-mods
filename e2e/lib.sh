@@ -10,11 +10,14 @@ MODEL_ARGS=()
 FAILED=0
 
 # claude_run <out.jsonl> <prompt> [claude args...]: one headless session; the prompt goes on stdin.
+# `fail` is defined below; it is only called when the function runs.
 claude_run() {
   local out=$1 prompt=$2; shift 2
   printf '%s' "$prompt" | env -u CLAUDE_CODE_CHILD_SESSION timeout "${E2E_TIMEOUT:-300}" claude -p --output-format stream-json --verbose ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} "$@" > "$out" 2> "$out.err"
   local code=$?
-  [ $code -eq 0 ] || echo "  (claude exited $code; stderr: $(head -c 300 "$out.err"))"
+  # A session that exits non-zero (124 when `timeout` kills a hang) fails the check, even when it wrote
+  # result lines first. Call this outside a subshell: the failure count is lost in one.
+  [ $code -eq 0 ] || fail "claude exited $code for $out (stderr: $(head -c 300 "$out.err"))"
   return 0
 }
 

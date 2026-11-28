@@ -17,5 +17,6 @@ step "code-mode kernel self-check" bun plugins/code-mode/kernel/kernel.check.ts
 step "code-mode interrupt check" bun plugins/code-mode/tests/interrupt.check.ts
 step "code-mode bun lookup check" bun plugins/code-mode/tests/find-bun.check.ts
 step "code-mode session-start check" bun plugins/code-mode/tests/session-start.check.ts
+step "e2e lib self-check" bash e2e/lib.check.sh
 echo "$failed failed"
 exit $failed
