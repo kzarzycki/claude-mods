@@ -21,6 +21,13 @@ claude_run() {
   return 0
 }
 
+# claude_run_in <dir> <claude_run args...>: claude_run from inside <dir>, in this shell (a subshell would
+# lose the failure count). When <dir> can't be entered, the check fails and no session starts.
+claude_run_in() {
+  local dir=$1; shift
+  if pushd "$dir" > /dev/null 2>&1; then claude_run "$@"; popd > /dev/null; else fail "cannot enter $dir, so not running: $2"; fi
+}
+
 # claude_tty <log> <wait-seconds> <command>... -- <claude args>...: an interactive session through
 # expect; the log is stripped of terminal escapes so it can be grepped.
 claude_tty() {

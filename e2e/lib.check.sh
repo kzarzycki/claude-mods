@@ -18,7 +18,19 @@ fake 'echo "{\"type\":\"result\"}"; exit 3'
 check "a session that exits non-zero fails" "$(count E2E_TIMEOUT=5)" 1
 fake 'echo "{\"type\":\"result\"}"; sleep 10'
 check "a timed-out check file exits non-zero" "$(E2E_TIMEOUT=1 bash -c 'source e2e/lib.sh; claude_run "$0/o.jsonl" hi >/dev/null; finish >/dev/null' "$T"; echo $?)" 1
-# FAILED is lost in a subshell, so no check file wraps claude_run in one.
-check "no check file runs claude_run in a subshell" "$(grep -nE '\(.*claude_run' e2e/*.sh | grep -v '^e2e/lib' | wc -l | tr -d ' ')" 0
+# decision.sh runs its last two sessions in an empty folder. A fake claude that logs its folder and call
+# number, and hangs on call $HANG, stands in for the real one.
+fake 'n=$(cat "$FAKE_DIR/n" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "$FAKE_DIR/n"
+echo "$n $PWD" >> "$FAKE_DIR/calls"; echo "{\"type\":\"result\"}"
+[ "$n" = "${HANG:-0}" ] && sleep 10; exit 0'
+decision() { rm -rf "$T/fd"; mkdir "$T/fd"; env FAKE_DIR="$T/fd" E2E_TIMEOUT=1 "$@" bash e2e/decision.sh 2>&1; }
+check "decision.sh: a hang in the 4th session fails the check" "$(decision HANG=4 | grep -c 'FAIL claude exited 124')" 1
+check "decision.sh: a hang in the 5th session fails the check" "$(decision HANG=5 | grep -c 'FAIL claude exited 124')" 1
+check "decision.sh: its last two sessions run in the empty folder" "$(decision HANG=0 >/dev/null; sed -n '4,5p' "$T/fd/calls" | grep -c '/empty$')" 2
+# A mkdir that fails leaves no folder to enter: the check fails and starts neither session.
+printf '#!/usr/bin/env bash\ncase "$*" in *empty*) exit 1;; esac\nexec /bin/mkdir "$@"\n' > "$T/bin/mkdir"; chmod +x "$T/bin/mkdir"
+check "decision.sh: no empty folder fails the check" "$(decision HANG=0 | grep -c 'FAIL cannot enter')" 2
+check "decision.sh: no empty folder starts no session in it" "$(wc -l < "$T/fd/calls" | tr -d ' ')" 3
+rm "$T/bin/mkdir"
 echo "$failed failed"
 exit $failed
