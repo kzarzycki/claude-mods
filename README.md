@@ -69,7 +69,7 @@ Options of mods loaded this way are under `<name>@inline` (in `/config`, or `cla
 
 ## Checks
 
-- `scripts/check.sh`: validate, unit-test (`claude plugin test`) and type-check every mod, plus the kernel's self-check. No model calls, under ten seconds.
+- `scripts/check.sh`: validate, unit-test (`claude plugin test`) and type-check each mod whose types a session has already laid (a fresh checkout or CI skips the type check; see Not done or not verified), plus the kernel's self-check. No model calls, under ten seconds.
 - `e2e/run.sh [decision repl ttsr compact hub self-compact]`: real `claude` sessions with the mods loaded, asserting on output and on files the mods write. They make real model calls; the whole run takes about four minutes. `hub` and the question-rule check drive an interactive session through `expect`, because headless `claude -p` differs there (see below).
 
 ## How the pieces work
@@ -106,6 +106,7 @@ Each item was observed in a run, not read from docs.
 
 ## Not done or not verified
 
+- **The type check runs only where a session has loaded the mod.** `scripts/check.sh` skips a mod's `tsc` until `.claude-plugin/types/` exists, so CI prints `skip ... tsc` for every mod. Tried on Claude Code 2.1.329 (the version CI installs), none of the ways to lay the types without an interactive session works: `claude plugin validate` and `claude plugin test` lay nothing; `claude -p --plugin-dir` never loads an installed mod's hooks module (its debug log says the rollout flag `tengu_plugin_hooks_modules` is not answered yet, and `CLAUDE_INTERNAL_FC_OVERRIDES` doesn't change that); an interactive run stops at first-run onboarding; and the npm package ships no `claude-code` `.d.ts`, since the binary builds that text at runtime from the engine's tool schemas. Run `claude --plugin-dir plugins/<mod>` once per mod before `mise run check` to type-check it. Revisit when Claude Code lays the types headless. (#14)
 - **Other System One servers.** Jev through the OpenRouter preset is checked live (the `decision` and `ttsr` e2e suites pass against it, answering as `typesafe/jev-1.13-20260917`). The TypeSafe preset and custom URLs are checked only against faked replies.
 - **Steering a running subagent** (`/hub send`, the pane's input). No automated check: the kit can't intercept `$.session.append`, and an e2e needs a subagent that stays running long enough.
 - **TTSR rules scoped to edit/write miss Bash.** A model that's refused a `Write` can write the same file with `printf … > file` (seen in an e2e run). Scope a rule to `tool:bash` too if that matters; matching shell redirections to file globs isn't done.
