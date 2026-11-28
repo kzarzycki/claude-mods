@@ -102,6 +102,17 @@ test("the guide says to keep going in the same script on the happy path and stop
   expect(d).toContain("stop and return on the first failure with what failed");
 });
 
+test("the guide says to use absolute paths with raw Bun and Node calls when scripts run side by side", async ($, on) => {
+  on("env.get", () => ({ value: undefined }));
+  on("tool.describe", () => ({ description: "short" }));
+  on("tool.list", () => ({ value: [] }));
+  await start($, on, () => ({ status: "done", output: "" }));
+  const d = (await $.tool.describe({ tool: "mcp__code-mode__repl", description: "short", provider: { plugin: "code-mode", tier: "user" } } as any)).description;
+  expect(d).toContain("a relative path in a raw Bun or Node call");
+  expect(d).toContain("pass absolute paths to those");
+  expect(d).toContain("`file`, `write`, `edit` and `$`, which resolve against your script's own folder");
+});
+
 test("with CODE_MODE_GUIDE=system the description points at the system prompt instead of repeating the guide", async ($, on) => {
   on("env.get", ($, e) => ({ value: e.name === "CODE_MODE_GUIDE" ? "system" : undefined }));
   on("tool.describe", () => ({ description: "short" }));
