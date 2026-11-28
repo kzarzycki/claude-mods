@@ -16,10 +16,10 @@ expect "an open concurrency bug rates high or above" "$T/hard.jsonl" 'effort: .*
 # A turn that ends on a promise is judged an unexpected stop and resumed with a second turn. Runs
 # in an empty folder with tools off, so the resumed turn has nothing to act on.
 mkdir -p "$T/empty"
-(cd "$T/empty" && claude_run "$T/stop.jsonl" "Reply with exactly this sentence and nothing else: Let me run the tests next." "${D[@]}" --disallowedTools "Bash,Write,Edit,Read,Glob,Grep,Agent")
+claude_run_in "$T/empty" "$T/stop.jsonl" "Reply with exactly this sentence and nothing else: Let me run the tests next." "${D[@]}" --disallowedTools "Bash,Write,Edit,Read,Glob,Grep,Agent"
 expect "an unexpected stop is detected" "$T/stop.jsonl" 'stopped mid-promise; resuming'
 if [ "$(grep -c '"type":"result"' "$T/stop.jsonl")" -ge 2 ]; then pass "a second turn ran"; else fail "no second turn in $T/stop.jsonl"; fi
 # A turn that ends by asking the user is waiting for them, not stopped mid-promise.
-(cd "$T/empty" && claude_run "$T/ask.jsonl" "Reply with exactly this sentence and nothing else: Should I go ahead with option A or B?" "${D[@]}" --disallowedTools "Bash,Write,Edit,Read,Glob,Grep,Agent")
+claude_run_in "$T/empty" "$T/ask.jsonl" "Reply with exactly this sentence and nothing else: Should I go ahead with option A or B?" "${D[@]}" --disallowedTools "Bash,Write,Edit,Read,Glob,Grep,Agent"
 expect_not "a question to the user is not resumed" "$T/ask.jsonl" 'stopped mid-promise; resuming'
 finish
