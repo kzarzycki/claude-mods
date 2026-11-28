@@ -133,3 +133,35 @@ test("with no bun found, repl fails with one line naming the install command, an
   expect(String(r.result).trim().split("\n").length).toBe(1);
   expect(posts).toEqual([]);
 });
+
+test("a refused settings-file read tells the script to use file(path).text(), not $.settings.read", async ($, on) => {
+  on("tool.call", { tool: "Bash" }, () => ({ deny: "a Claude Code settings file is not for plugins outside policy to write; read settings with $.settings.read" }));
+  const posts = await start($, on, path =>
+    path === "/run" ? { status: "call", callId: "c1", kind: "tool", payload: { tool: "Bash", args: { command: "jq . ~/.claude/settings.json" } } } : { status: "done", output: "", value: "ok" },
+  );
+  await $.tool.call({ tool: "mcp__code-mode__repl", code: "await $`jq . ~/.claude/settings.json`" });
+  const text = String(posts[1]!.body.value.text);
+  expect(text).toContain("file(path).text()");
+  expect(text).not.toContain("$.settings.read");
+});
+
+test("a settings refusal returned as an error result is rewritten too", async ($, on) => {
+  on("tool.call", { tool: "Bash" }, () => ({ result: "x" as never, isError: true, text: "a Claude Code settings file is not for plugins outside policy to write; read settings with $.settings.read" }));
+  const posts = await start($, on, path =>
+    path === "/run" ? { status: "call", callId: "c1", kind: "tool", payload: { tool: "Bash", args: { command: "jq . ~/.claude/settings.json" } } } : { status: "done", output: "", value: "ok" },
+  );
+  await $.tool.call({ tool: "mcp__code-mode__repl", code: "await $`jq . ~/.claude/settings.json`" });
+  const text = String(posts[1]!.body.value.text);
+  expect(text).toContain("file(path).text()");
+  expect(text).not.toContain("$.settings.read");
+});
+
+test("a tool's own output that holds the settings phrase is not rewritten", async ($, on) => {
+  const out = "Exit code 2\nread settings with $.settings.read";
+  on("tool.call", { tool: "Bash" }, () => ({ result: "x" as never, isError: true, text: out }));
+  const posts = await start($, on, path =>
+    path === "/run" ? { status: "call", callId: "c1", kind: "tool", payload: { tool: "Bash", args: { command: "x" } } } : { status: "done", output: "", value: "ok" },
+  );
+  await $.tool.call({ tool: "mcp__code-mode__repl", code: "await $`x`" });
+  expect(posts[1]!.body.value.text).toBe(out);
+});
